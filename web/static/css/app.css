@@ -48,11 +48,25 @@ body {
 .topnav {
     display: flex;
     gap: 12px;
+    align-items: center;
 }
 .topnav a {
     color: #fff;
     text-decoration: none;
     font-weight: 600;
+}
+
+.nav-user {
+    color: #d8e7ff;
+    font-size: 13px;
+}
+
+.btn-nav {
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #1f3f76;
+    font-size: 13px;
 }
 
 .container {
