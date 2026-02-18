@@ -57,14 +57,40 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	})
 	r.Get("/metrics", obs.MetricsHandler)
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	renderPage := func(w http.ResponseWriter, contentTemplate, pageTitle string, extra map[string]any) {
 		data := map[string]any{
-			"Title": "CBT LMS",
+			"Title":           pageTitle,
+			"Page":            contentTemplate,
+			"ContentTemplate": contentTemplate,
 		}
-
+		for k, v := range extra {
+			data[k] = v
+		}
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+	}
+
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "home_content", "CBT LMS", map[string]any{})
+	})
+	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "login_content", "Login CBT LMS", map[string]any{})
+	})
+	r.Get("/simulasi", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "simulasi_content", "Pilih Simulasi", map[string]any{})
+	})
+	r.Get("/ujian/{id}", func(w http.ResponseWriter, r *http.Request) {
+		attemptID := chi.URLParam(r, "id")
+		renderPage(w, "attempt_content", "Pengerjaan Ujian", map[string]any{
+			"AttemptID": attemptID,
+		})
+	})
+	r.Get("/hasil/{id}", func(w http.ResponseWriter, r *http.Request) {
+		attemptID := chi.URLParam(r, "id")
+		renderPage(w, "result_content", "Hasil Ujian", map[string]any{
+			"AttemptID": attemptID,
+		})
 	})
 
 	r.Route("/api/v1", func(api chi.Router) {
@@ -79,9 +105,12 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 			secure.Use(CSRFMiddleware(cfg.CSRFEnforced))
 			secure.Get("/auth/me", authHandler.Me)
 			secure.Post("/auth/logout", authHandler.Logout)
+			secure.Get("/subjects", examHandler.ListSubjects)
+			secure.Get("/exams", examHandler.ListExams)
 
 			secure.Post("/attempts/start", examHandler.Start)
 			secure.Get("/attempts/{id}", examHandler.GetAttempt)
+			secure.Get("/attempts/{id}/questions/{no}", examHandler.GetAttemptQuestion)
 			secure.Get("/attempts/{id}/result", examHandler.Result)
 			secure.Post("/attempts/{id}/events", examHandler.LogEvent)
 			secure.Put("/attempts/{id}/answers/{questionID}", examHandler.SaveAnswer)

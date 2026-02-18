@@ -1,4 +1,4 @@
-{{define "content"}}
+{{define "home_content"}}
 <section class="card">
     <h2>Blueprint Project Ready</h2>
     <p>Starter backend Go + database migration + docker compose sudah siap.</p>
@@ -6,6 +6,15 @@
         <li>Health check: <code>/healthz</code></li>
         <li>Static assets: <code>/static/*</code></li>
     </ul>
+    <p class="muted">
+        Halaman ini ada di file <code>web/templates/pages/home.html</code>, dan
+        route-nya di <code>internal/app/router.go</code>.
+    </p>
+
+    <div class="actions">
+        <a class="btn" href="/login">Lanjut ke Login</a>
+        <a class="btn btn-secondary" href="/simulasi">Lanjut ke Simulasi</a>
+    </div>
 
     <h3>1. Stack Teknologi Rekomendasi</h3>
     <ul>

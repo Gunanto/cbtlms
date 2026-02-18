@@ -1,0 +1,20 @@
+{{define "login_content"}}
+<section class="card narrow">
+  <h2>Login</h2>
+  <p class="muted">Masuk dengan username/email dan password.</p>
+
+  <form id="login-form" class="form-grid">
+    <label>
+      Username / Email
+      <input type="text" name="identifier" required />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required />
+    </label>
+    <button class="btn" type="submit">Masuk</button>
+  </form>
+
+  <p id="login-message" class="muted"></p>
+</section>
+{{end}}

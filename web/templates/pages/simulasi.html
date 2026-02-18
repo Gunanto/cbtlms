@@ -1,0 +1,40 @@
+{{define "simulasi_content"}}
+<section class="card narrow">
+  <h2>Pilih Simulasi</h2>
+  <p class="muted">Pilih jenjang, jenis mapel, mapel, lalu mulai attempt.</p>
+
+  <form id="simulasi-form" class="form-grid">
+    <label>
+      Jenjang
+      <select id="level-select">
+        <option value="">Pilih jenjang...</option>
+      </select>
+    </label>
+
+    <label>
+      Jenis Mapel
+      <select id="type-select" disabled>
+        <option value="">Pilih jenis...</option>
+      </select>
+    </label>
+
+    <label>
+      Mata Pelajaran
+      <select id="subject-select" disabled>
+        <option value="">Pilih mapel...</option>
+      </select>
+    </label>
+
+    <label>
+      Exam
+      <select id="exam-select" disabled>
+        <option value="">Pilih exam...</option>
+      </select>
+    </label>
+
+    <button id="start-btn" class="btn" type="submit" disabled>Mulai Simulasi</button>
+  </form>
+
+  <p id="simulasi-message" class="muted"></p>
+</section>
+{{end}}

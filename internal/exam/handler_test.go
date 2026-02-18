@@ -16,14 +16,17 @@ import (
 )
 
 type mockExamService struct {
-	startAttemptFn      func(ctx context.Context, examID, studentID int64) (*Attempt, error)
-	getAttemptSummaryFn func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
-	getAttemptResultFn  func(ctx context.Context, attemptID int64) (*AttemptResult, error)
-	saveAnswerFn        func(ctx context.Context, input SaveAnswerInput) error
-	submitAttemptFn     func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
-	getAttemptOwnerFn   func(ctx context.Context, attemptID int64) (int64, error)
-	logAttemptEventFn   func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
-	listAttemptEventsFn func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
+	startAttemptFn       func(ctx context.Context, examID, studentID int64) (*Attempt, error)
+	listSubjectsFn       func(ctx context.Context, level, subjectType string) ([]SubjectOption, error)
+	listExamsFn          func(ctx context.Context, subjectID int64) ([]ExamOption, error)
+	getAttemptSummaryFn  func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
+	getAttemptQuestionFn func(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error)
+	getAttemptResultFn   func(ctx context.Context, attemptID int64) (*AttemptResult, error)
+	saveAnswerFn         func(ctx context.Context, input SaveAnswerInput) error
+	submitAttemptFn      func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
+	getAttemptOwnerFn    func(ctx context.Context, attemptID int64) (int64, error)
+	logAttemptEventFn    func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
+	listAttemptEventsFn  func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
 }
 
 func (m *mockExamService) StartAttempt(ctx context.Context, examID, studentID int64) (*Attempt, error) {
@@ -33,11 +36,32 @@ func (m *mockExamService) StartAttempt(ctx context.Context, examID, studentID in
 	return m.startAttemptFn(ctx, examID, studentID)
 }
 
+func (m *mockExamService) ListSubjects(ctx context.Context, level, subjectType string) ([]SubjectOption, error) {
+	if m.listSubjectsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listSubjectsFn(ctx, level, subjectType)
+}
+
+func (m *mockExamService) ListExamsBySubject(ctx context.Context, subjectID int64) ([]ExamOption, error) {
+	if m.listExamsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listExamsFn(ctx, subjectID)
+}
+
 func (m *mockExamService) GetAttemptSummary(ctx context.Context, attemptID int64) (*AttemptSummary, error) {
 	if m.getAttemptSummaryFn == nil {
 		return nil, errors.New("not implemented")
 	}
 	return m.getAttemptSummaryFn(ctx, attemptID)
+}
+
+func (m *mockExamService) GetAttemptQuestion(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error) {
+	if m.getAttemptQuestionFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.getAttemptQuestionFn(ctx, attemptID, questionNo)
 }
 
 func (m *mockExamService) GetAttemptResult(ctx context.Context, attemptID int64) (*AttemptResult, error) {

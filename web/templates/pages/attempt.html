@@ -1,0 +1,30 @@
+{{define "attempt_content"}}
+<section class="card" data-attempt-id="{{.AttemptID}}" id="attempt-root">
+  <div class="attempt-head">
+    <h2>Ujian Attempt #{{.AttemptID}}</h2>
+    <div class="timer">Sisa waktu: <span id="remaining-label">-</span></div>
+  </div>
+
+  <div class="attempt-layout">
+    <article class="panel stimulus-panel">
+      <h3>Stimulus</h3>
+      <div id="stimulus-box" class="box muted">Belum ada stimulus.</div>
+    </article>
+
+    <article class="panel question-panel">
+      <h3 id="question-title">Soal</h3>
+      <div id="stem-box" class="box"></div>
+      <div id="options-box" class="box"></div>
+    </article>
+  </div>
+
+  <div class="actions">
+    <button id="prev-btn" class="btn btn-secondary" type="button">Soal Sebelumnya</button>
+    <label class="doubt-toggle"><input id="doubt-checkbox" type="checkbox" /> Ragu-ragu</label>
+    <button id="next-btn" class="btn" type="button">Soal Berikutnya</button>
+    <button id="submit-btn" class="btn btn-danger" type="button">Submit Final</button>
+  </div>
+
+  <p id="attempt-message" class="muted"></p>
+</section>
+{{end}}

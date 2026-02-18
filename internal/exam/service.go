@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrInvalidInput       = errors.New("invalid input")
 	ErrExamNotFound       = errors.New("exam not found")
 	ErrAttemptNotFound    = errors.New("attempt not found")
 	ErrAttemptNotEditable = errors.New("attempt is not editable")
@@ -66,6 +67,22 @@ type AttemptResult struct {
 	Items   []AttemptResultItem `json:"items"`
 }
 
+type SubjectOption struct {
+	ID             int64  `json:"id"`
+	EducationLevel string `json:"education_level"`
+	SubjectType    string `json:"subject_type"`
+	Name           string `json:"name"`
+}
+
+type ExamOption struct {
+	ID           int64      `json:"id"`
+	Code         string     `json:"code"`
+	Title        string     `json:"title"`
+	SubjectID    int64      `json:"subject_id"`
+	EndAt        *time.Time `json:"end_at,omitempty"`
+	ReviewPolicy string     `json:"review_policy"`
+}
+
 type AttemptResultItem struct {
 	QuestionID  int64            `json:"question_id"`
 	Selected    []string         `json:"selected"`
@@ -74,6 +91,24 @@ type AttemptResultItem struct {
 	EarnedScore float64          `json:"earned_score"`
 	Reason      string           `json:"reason,omitempty"`
 	Breakdown   []StatementScore `json:"breakdown,omitempty"`
+}
+
+type AttemptQuestion struct {
+	AttemptID     int64            `json:"attempt_id"`
+	QuestionID    int64            `json:"question_id"`
+	SeqNo         int              `json:"seq_no"`
+	QuestionType  string           `json:"question_type"`
+	StemHTML      string           `json:"stem_html"`
+	StimulusHTML  *string          `json:"stimulus_html,omitempty"`
+	AnswerKey     json.RawMessage  `json:"answer_key"`
+	AnswerPayload json.RawMessage  `json:"answer_payload"`
+	IsDoubt       bool             `json:"is_doubt"`
+	Options       []QuestionOption `json:"options,omitempty"`
+}
+
+type QuestionOption struct {
+	OptionKey  string `json:"option_key"`
+	OptionHTML string `json:"option_html"`
 }
 
 type AttemptEventInput struct {
@@ -266,6 +301,178 @@ func (s *Service) GetAttemptOwner(ctx context.Context, attemptID int64) (int64, 
 		return 0, fmt.Errorf("load attempt owner: %w", err)
 	}
 	return studentID, nil
+}
+
+func (s *Service) ListSubjects(ctx context.Context, level, subjectType string) ([]SubjectOption, error) {
+	level = strings.TrimSpace(level)
+	subjectType = strings.TrimSpace(subjectType)
+
+	query := `
+		SELECT id, education_level, subject_type, name
+		FROM subjects
+		WHERE is_active = TRUE
+	`
+	args := make([]any, 0, 2)
+	idx := 1
+	if level != "" {
+		query += fmt.Sprintf(" AND education_level = $%d", idx)
+		args = append(args, level)
+		idx++
+	}
+	if subjectType != "" {
+		query += fmt.Sprintf(" AND subject_type = $%d", idx)
+		args = append(args, subjectType)
+		idx++
+	}
+	query += " ORDER BY education_level, subject_type, name"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query subjects: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]SubjectOption, 0)
+	for rows.Next() {
+		var it SubjectOption
+		if err := rows.Scan(&it.ID, &it.EducationLevel, &it.SubjectType, &it.Name); err != nil {
+			return nil, fmt.Errorf("scan subject: %w", err)
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate subjects: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) ListExamsBySubject(ctx context.Context, subjectID int64) ([]ExamOption, error) {
+	if subjectID <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, code, title, subject_id, end_at, review_policy
+		FROM exams
+		WHERE subject_id = $1
+		  AND is_active = TRUE
+		ORDER BY created_at DESC, id DESC
+	`, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("query exams by subject: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ExamOption, 0)
+	for rows.Next() {
+		var it ExamOption
+		var endAt sql.NullTime
+		if err := rows.Scan(&it.ID, &it.Code, &it.Title, &it.SubjectID, &endAt, &it.ReviewPolicy); err != nil {
+			return nil, fmt.Errorf("scan exam: %w", err)
+		}
+		if endAt.Valid {
+			it.EndAt = &endAt.Time
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exams: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) GetAttemptQuestion(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error) {
+	if attemptID <= 0 || questionNo <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	row, err := s.loadAttemptRow(ctx, s.db, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	if row.Status == "in_progress" && time.Now().After(row.ExpiresAt) {
+		if _, err := s.finalizeAttempt(ctx, attemptID, "expired"); err != nil {
+			return nil, err
+		}
+	}
+
+	r := s.db.QueryRowContext(ctx, `
+		SELECT
+			a.id,
+			eq.question_id,
+			eq.seq_no,
+			q.question_type,
+			q.stem_html,
+			q.stimulus_html,
+			COALESCE(qv.answer_key, '{}'::jsonb) AS answer_key,
+			COALESCE(aa.answer_payload, '{}'::jsonb) AS answer_payload,
+			COALESCE(aa.is_doubt, FALSE) AS is_doubt
+		FROM attempts a
+		JOIN exam_questions eq
+			ON eq.exam_id = a.exam_id
+		JOIN questions q
+			ON q.id = eq.question_id
+		LEFT JOIN attempt_answers aa
+			ON aa.attempt_id = a.id
+			AND aa.question_id = eq.question_id
+		LEFT JOIN LATERAL (
+			SELECT answer_key
+			FROM question_versions
+			WHERE question_id = q.id
+			  AND is_active = TRUE
+			  AND status = 'final'
+			ORDER BY version_no DESC
+			LIMIT 1
+		) qv ON TRUE
+		WHERE a.id = $1
+		  AND eq.seq_no = $2
+	`, attemptID, questionNo)
+
+	var out AttemptQuestion
+	var stimulus sql.NullString
+	if err := r.Scan(
+		&out.AttemptID,
+		&out.QuestionID,
+		&out.SeqNo,
+		&out.QuestionType,
+		&out.StemHTML,
+		&stimulus,
+		&out.AnswerKey,
+		&out.AnswerPayload,
+		&out.IsDoubt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrQuestionNotInExam
+		}
+		return nil, fmt.Errorf("query attempt question: %w", err)
+	}
+	if stimulus.Valid {
+		out.StimulusHTML = &stimulus.String
+	}
+
+	optRows, err := s.db.QueryContext(ctx, `
+		SELECT option_key, option_html
+		FROM question_options
+		WHERE question_id = $1
+		ORDER BY option_key ASC
+	`, out.QuestionID)
+	if err != nil {
+		return nil, fmt.Errorf("query question options: %w", err)
+	}
+	defer optRows.Close()
+
+	for optRows.Next() {
+		var opt QuestionOption
+		if err := optRows.Scan(&opt.OptionKey, &opt.OptionHTML); err != nil {
+			return nil, fmt.Errorf("scan question option: %w", err)
+		}
+		out.Options = append(out.Options, opt)
+	}
+	if err := optRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate question options: %w", err)
+	}
+
+	return &out, nil
 }
 
 func (s *Service) GetAttemptResult(ctx context.Context, attemptID int64) (*AttemptResult, error) {
