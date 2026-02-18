@@ -1,0 +1,16 @@
+.git
+.github
+tmp
+.tmp
+*.log
+*.out
+*.test
+coverage.*
+bin
+dist
+build
+assets/design-samples
+docs
+BACKEND_STEP.md
+blueprint.md
+hidupkanserver.md

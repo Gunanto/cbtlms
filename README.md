@@ -22,6 +22,30 @@ Tuning DB pool via environment (opsional):
 - `DB_MAX_IDLE_CONNS` (default `25`)
 - `DB_CONN_MAX_LIFETIME_MINUTES` (default `30`)
 
+## Build + push image ke GHCR
+
+Workflow tersedia di:
+- `.github/workflows/ghcr-image.yml`
+
+Trigger:
+- push ke `main`
+- push tag `v*`
+- manual `workflow_dispatch`
+
+Image target:
+- `ghcr.io/<owner>/<repo>`
+- tag otomatis: `latest` (default branch), `main`, `v*`, `sha-*`
+
+Contoh pull di server:
+
+```bash
+docker pull ghcr.io/gunanto/cbtlms:latest
+```
+
+Catatan izin:
+- Repo Actions harus diizinkan write ke packages.
+- Jika push dari lokal mengubah file workflow, token GitHub Anda perlu scope `workflow`.
+
 ## Health check
 
 ```bash
