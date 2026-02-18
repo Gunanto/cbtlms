@@ -1,0 +1,45 @@
+{{define "content"}}
+<section class="card">
+    <h2>Blueprint Project Ready</h2>
+    <p>Starter backend Go + database migration + docker compose sudah siap.</p>
+    <ul>
+        <li>Health check: <code>/healthz</code></li>
+        <li>Static assets: <code>/static/*</code></li>
+    </ul>
+
+    <h3>1. Stack Teknologi Rekomendasi</h3>
+    <ul>
+        <li>Backend: <code>Go 1.22+</code> dengan router <code>Chi</code>.</li>
+        <li>
+            Frontend: SSR <code>html/template</code> +
+            <code>HTMX</code> (opsional interaksi ringan).
+        </li>
+        <li>
+            Database: <code>PostgreSQL 15+</code> untuk transaksi ujian yang
+            konsisten.
+        </li>
+        <li>
+            Infra: <code>Docker Compose</code>, reverse proxy
+            <code>Nginx/Caddy</code>, <code>Redis</code> opsional.
+        </li>
+    </ul>
+
+    <h3>2. Arsitektur Sistem</h3>
+    <ul>
+        <li>Peserta login lalu pilih jenjang, jenis mapel, dan mapel.</li>
+        <li>
+            Sistem membuat <code>attempt</code> berisi waktu mulai dan batas
+            selesai dari server.
+        </li>
+        <li>
+            Halaman ujian dua panel: kiri stimulus, kanan pertanyaan dan
+            jawaban.
+        </li>
+        <li>Autosave jawaban idempotent ke server setiap perubahan.</li>
+        <li>
+            Submit final diproses transaksi SQL (atomic), lalu tampil hasil
+            sesuai <code>review_policy</code>.
+        </li>
+    </ul>
+</section>
+{{end}}

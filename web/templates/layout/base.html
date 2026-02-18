@@ -1,0 +1,20 @@
+{{define "base"}}
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>CBT LMS</h1>
+  </header>
+  <main class="container">
+    {{template "content" .}}
+  </main>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+{{end}}

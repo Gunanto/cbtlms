@@ -1,0 +1,57 @@
+# =========================
+# User-requested ignores
+# =========================
+hidupkanserver.md
+blueprint.md
+BACKEND_STEP.md
+.env.example
+docs/
+assets/design-samples/
+
+# =========================
+# Environment & secrets
+# =========================
+.env
+.env.*
+
+# =========================
+# Build artifacts (Go)
+# =========================
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+*.cover
+*.prof
+*.pprof
+
+# =========================
+# Logs & runtime files
+# =========================
+*.log
+tmp/
+.tmp/
+
+# =========================
+# Editor / OS
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# Dependency / tooling caches
+# =========================
+node_modules/
+.cache/

@@ -1,0 +1,41 @@
+:root {
+  --bg: #eef3fb;
+  --primary: #2056a8;
+  --card: #ffffff;
+  --text: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: radial-gradient(circle at top, #d7e6ff 0%, var(--bg) 45%, #edf2ff 100%);
+  color: var(--text);
+}
+
+.topbar {
+  background: linear-gradient(90deg, #174a92, var(--primary));
+  color: #fff;
+  padding: 14px 20px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.container {
+  max-width: 920px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(32, 86, 168, 0.12);
+}
