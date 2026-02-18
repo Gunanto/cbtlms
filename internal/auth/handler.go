@@ -2,11 +2,15 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"cbtlms/internal/app/apiresp"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -16,6 +20,8 @@ type contextKey string
 const userContextKey contextKey = "auth_user"
 
 const sessionCookieName = "cbtlms_session"
+const csrfCookieName = "cbtlms_csrf"
+const csrfHeaderName = "X-CSRF-Token"
 
 type Handler struct {
 	svc *Service
@@ -72,7 +78,7 @@ func NewHandler(svc *Service) *Handler {
 func (h *Handler) LoginPassword(w http.ResponseWriter, r *http.Request) {
 	var req loginPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
 		return
 	}
 
@@ -80,47 +86,47 @@ func (h *Handler) LoginPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrRateLimited):
-			writeJSON(w, http.StatusTooManyRequests, apiResponse{OK: false, Error: "too many attempts"})
+			writeJSON(w, r, http.StatusTooManyRequests, apiResponse{OK: false, Error: "too many attempts"})
 		case errors.Is(err, ErrInvalidCredentials):
-			writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "invalid credentials"})
+			writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "invalid credentials"})
 		case errors.Is(err, ErrForbidden):
-			writeJSON(w, http.StatusForbidden, apiResponse{OK: false, Error: "account is not active"})
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "account is not active"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
 	if err := h.establishSession(w, r, user); err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "cannot create session"})
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "cannot create session"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: user})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: user})
 }
 
 func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 	var req otpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
 		return
 	}
 
 	err := h.svc.RequestOTP(r.Context(), req.Email)
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {
-			writeJSON(w, http.StatusTooManyRequests, apiResponse{OK: false, Error: "otp requested too frequently"})
+			writeJSON(w, r, http.StatusTooManyRequests, apiResponse{OK: false, Error: "otp requested too frequently"})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "if eligible, otp has been sent"}})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "if eligible, otp has been sent"}})
 }
 
 func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	var req otpVerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
 		return
 	}
 
@@ -128,30 +134,30 @@ func (h *Handler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrRateLimited):
-			writeJSON(w, http.StatusTooManyRequests, apiResponse{OK: false, Error: "too many otp attempts"})
+			writeJSON(w, r, http.StatusTooManyRequests, apiResponse{OK: false, Error: "too many otp attempts"})
 		case errors.Is(err, ErrInvalidOTP):
-			writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "invalid otp"})
+			writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "invalid otp"})
 		case errors.Is(err, ErrOTPExpired):
-			writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "otp expired"})
+			writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "otp expired"})
 		case errors.Is(err, ErrForbidden):
-			writeJSON(w, http.StatusForbidden, apiResponse{OK: false, Error: "account is not active"})
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "account is not active"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
 	if err := h.establishSession(w, r, user); err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "cannot create session"})
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "cannot create session"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: user})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: user})
 }
 
 func (h *Handler) BootstrapInit(w http.ResponseWriter, r *http.Request) {
 	var req bootstrapInitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
 		return
 	}
 
@@ -167,14 +173,14 @@ func (h *Handler) BootstrapInit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBootstrapDenied):
-			writeJSON(w, http.StatusForbidden, apiResponse{OK: false, Error: "bootstrap denied"})
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "bootstrap denied"})
 		default:
-			writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "bootstrap updated"}})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "bootstrap updated"}})
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -190,23 +196,32 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "logged_out"}})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "logged_out"}})
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	user, ok := CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
 		return
 	}
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: user})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: user})
 }
 
 func (h *Handler) CreateRegistration(w http.ResponseWriter, r *http.Request) {
 	var req createRegistrationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
 		return
 	}
 
@@ -225,11 +240,11 @@ func (h *Handler) CreateRegistration(w http.ResponseWriter, r *http.Request) {
 		FormPayload:     formPayload,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, apiResponse{OK: true, Data: map[string]interface{}{"registration_id": id, "status": "pending"}})
+	writeJSON(w, r, http.StatusCreated, apiResponse{OK: true, Data: map[string]interface{}{"registration_id": id, "status": "pending"}})
 }
 
 func (h *Handler) ListPendingRegistrations(w http.ResponseWriter, r *http.Request) {
@@ -243,23 +258,23 @@ func (h *Handler) ListPendingRegistrations(w http.ResponseWriter, r *http.Reques
 
 	items, err := h.svc.ListRegistrationPending(r.Context(), limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: items})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: items})
 }
 
 func (h *Handler) ApproveRegistration(w http.ResponseWriter, r *http.Request) {
 	admin, ok := CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid registration id"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid registration id"})
 		return
 	}
 
@@ -267,28 +282,28 @@ func (h *Handler) ApproveRegistration(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrRegistrationNotFound):
-			writeJSON(w, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrRegistrationState):
-			writeJSON(w, http.StatusConflict, apiResponse{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusConflict, apiResponse{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: map[string]interface{}{"status": "approved", "user_id": userID}})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]interface{}{"status": "approved", "user_id": userID}})
 }
 
 func (h *Handler) RejectRegistration(w http.ResponseWriter, r *http.Request) {
 	admin, ok := CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || id <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid registration id"})
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid registration id"})
 		return
 	}
 
@@ -299,14 +314,14 @@ func (h *Handler) RejectRegistration(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrRegistrationState):
-			writeJSON(w, http.StatusConflict, apiResponse{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusConflict, apiResponse{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "rejected"}})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "rejected"}})
 }
 
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {
@@ -314,7 +329,7 @@ func (h *Handler) RequireAuth(next http.Handler) http.Handler {
 		token := readSessionToken(r)
 		user, err := h.svc.GetSessionUser(r.Context(), token)
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+			writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
 			return
 		}
 
@@ -333,11 +348,11 @@ func (h *Handler) RequireRoles(roles ...string) func(http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := CurrentUser(r.Context())
 			if !ok {
-				writeJSON(w, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+				writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
 				return
 			}
 			if _, exists := allowed[user.Role]; !exists {
-				writeJSON(w, http.StatusForbidden, apiResponse{OK: false, Error: "forbidden"})
+				writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "forbidden"})
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -365,6 +380,10 @@ func (h *Handler) establishSession(w http.ResponseWriter, r *http.Request, user 
 	if err != nil {
 		return err
 	}
+	csrfToken, err := generateCSRFToken()
+	if err != nil {
+		return err
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -375,7 +394,25 @@ func (h *Handler) establishSession(w http.ResponseWriter, r *http.Request, user 
 		Secure:   false,
 		SameSite: http.SameSiteLaxMode,
 	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     csrfCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		Expires:  expiresAt,
+		HttpOnly: false,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+	w.Header().Set(csrfHeaderName, csrfToken)
 	return nil
+}
+
+func generateCSRFToken() (string, error) {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
 }
 
 func readSessionToken(r *http.Request) string {
@@ -397,8 +434,6 @@ func readIP(r *http.Request) string {
 	return strings.TrimSpace(r.RemoteAddr)
 }
 
-func writeJSON(w http.ResponseWriter, code int, payload apiResponse) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(payload)
+func writeJSON(w http.ResponseWriter, r *http.Request, code int, payload apiResponse) {
+	apiresp.WriteLegacy(w, r, code, payload.OK, payload.Data, payload.Error)
 }

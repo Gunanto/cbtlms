@@ -22,6 +22,8 @@ type mockExamService struct {
 	saveAnswerFn        func(ctx context.Context, input SaveAnswerInput) error
 	submitAttemptFn     func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
 	getAttemptOwnerFn   func(ctx context.Context, attemptID int64) (int64, error)
+	logAttemptEventFn   func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
+	listAttemptEventsFn func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
 }
 
 func (m *mockExamService) StartAttempt(ctx context.Context, examID, studentID int64) (*Attempt, error) {
@@ -64,6 +66,20 @@ func (m *mockExamService) GetAttemptOwner(ctx context.Context, attemptID int64) 
 		return 0, errors.New("not implemented")
 	}
 	return m.getAttemptOwnerFn(ctx, attemptID)
+}
+
+func (m *mockExamService) LogAttemptEvent(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error) {
+	if m.logAttemptEventFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.logAttemptEventFn(ctx, input)
+}
+
+func (m *mockExamService) ListAttemptEvents(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error) {
+	if m.listAttemptEventsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listAttemptEventsFn(ctx, attemptID, limit)
 }
 
 func withChiParam(r *http.Request, key, value string) *http.Request {
@@ -291,5 +307,51 @@ func TestResultPolicyDenied(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestLogEventForbiddenForNonOwner(t *testing.T) {
+	logCalled := false
+	h := NewHandler(&mockExamService{
+		getAttemptOwnerFn: func(ctx context.Context, attemptID int64) (int64, error) { return 99, nil },
+		logAttemptEventFn: func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error) {
+			logCalled = true
+			return &AttemptEvent{ID: 1, AttemptID: input.AttemptID, EventType: input.EventType}, nil
+		},
+	})
+
+	payload := []byte(`{"event_type":"tab_blur","payload":{"count":1}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/77/events", bytes.NewReader(payload))
+	req = withChiParam(req, "id", "77")
+	req = req.WithContext(auth.ContextWithUser(req.Context(), &auth.User{ID: 1, Role: "siswa"}))
+	w := httptest.NewRecorder()
+
+	h.LogEvent(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+	if logCalled {
+		t.Fatalf("log event should not be called for non-owner")
+	}
+}
+
+func TestListEventsOK(t *testing.T) {
+	h := NewHandler(&mockExamService{
+		listAttemptEventsFn: func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error) {
+			if attemptID != 55 {
+				t.Fatalf("unexpected attempt id: %d", attemptID)
+			}
+			return []AttemptEvent{{ID: 1, AttemptID: 55, EventType: "tab_blur"}}, nil
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/attempts/55/events?limit=100", nil)
+	req = withChiParam(req, "id", "55")
+	w := httptest.NewRecorder()
+
+	h.ListEvents(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }

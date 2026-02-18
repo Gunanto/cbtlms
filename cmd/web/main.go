@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"cbtlms/internal/app"
 	"cbtlms/internal/db"
@@ -13,7 +14,11 @@ import (
 func main() {
 	cfg := app.LoadConfig()
 
-	dbConn, err := db.OpenPostgres(context.Background(), cfg.DBDSN)
+	dbConn, err := db.OpenPostgresWithConfig(context.Background(), cfg.DBDSN, db.PostgresConfig{
+		MaxOpenConns:    cfg.DBMaxOpenConns,
+		MaxIdleConns:    cfg.DBMaxIdleConns,
+		ConnMaxLifetime: time.Duration(cfg.DBConnMaxLifeMins) * time.Minute,
+	})
 	if err != nil {
 		log.Printf("database error: %v", err)
 		os.Exit(1)

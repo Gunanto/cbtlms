@@ -6,7 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
+	"cbtlms/internal/app/apiresp"
 	"cbtlms/internal/auth"
 
 	"github.com/go-chi/chi/v5"
@@ -23,6 +26,8 @@ type examService interface {
 	SaveAnswer(ctx context.Context, input SaveAnswerInput) error
 	SubmitAttempt(ctx context.Context, attemptID int64) (*AttemptSummary, error)
 	GetAttemptOwner(ctx context.Context, attemptID int64) (int64, error)
+	LogAttemptEvent(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
+	ListAttemptEvents(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
 }
 
 type response struct {
@@ -41,6 +46,12 @@ type saveAnswerRequest struct {
 	IsDoubt       bool            `json:"is_doubt"`
 }
 
+type attemptEventRequest struct {
+	EventType string          `json:"event_type"`
+	Payload   json.RawMessage `json:"payload"`
+	ClientTS  string          `json:"client_ts"`
+}
+
 func NewHandler(svc examService) *Handler {
 	return &Handler{svc: svc}
 }
@@ -48,29 +59,29 @@ func NewHandler(svc examService) *Handler {
 func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	var req startAttemptRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
 		return
 	}
 	if req.ExamID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "exam_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "exam_id is required"})
 		return
 	}
 
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	isPrivileged := user.Role == "admin" || user.Role == "proktor"
 	if isPrivileged {
 		if req.StudentID <= 0 {
-			writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "student_id is required for admin/proktor"})
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "student_id is required for admin/proktor"})
 			return
 		}
 	} else {
 		if req.StudentID > 0 && req.StudentID != user.ID {
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
 			return
 		}
 		req.StudentID = user.ID
@@ -80,37 +91,37 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrExamNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: attempt})
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: attempt})
 }
 
 func (h *Handler) GetAttempt(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || attemptID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
 		return
 	}
 
 	if err := h.authorizeAttemptAccess(r, user, attemptID); err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptForbidden):
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
@@ -119,38 +130,38 @@ func (h *Handler) GetAttempt(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: summary})
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: summary})
 }
 
 func (h *Handler) SaveAnswer(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || attemptID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
 		return
 	}
 
 	questionID, err := strconv.ParseInt(chi.URLParam(r, "questionID"), 10, 64)
 	if err != nil || questionID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid question id"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid question id"})
 		return
 	}
 
 	var req saveAnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
 		return
 	}
 	if len(req.AnswerPayload) == 0 {
@@ -160,11 +171,11 @@ func (h *Handler) SaveAnswer(w http.ResponseWriter, r *http.Request) {
 	if err := h.authorizeAttemptAccess(r, user, attemptID); err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptForbidden):
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
@@ -178,39 +189,39 @@ func (h *Handler) SaveAnswer(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptNotEditable), errors.Is(err, ErrQuestionNotInExam):
-			writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: map[string]string{"status": "saved"}})
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: map[string]string{"status": "saved"}})
 }
 
 func (h *Handler) Submit(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || attemptID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
 		return
 	}
 
 	if err := h.authorizeAttemptAccess(r, user, attemptID); err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptForbidden):
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
@@ -219,37 +230,37 @@ func (h *Handler) Submit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: summary})
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: summary})
 }
 
 func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return
 	}
 
 	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil || attemptID <= 0 {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
 		return
 	}
 
 	if err := h.authorizeAttemptAccess(r, user, attemptID); err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptForbidden):
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
@@ -258,24 +269,116 @@ func (h *Handler) Result(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptNotFound):
-			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrAttemptNotFinal):
-			writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrResultPolicyDenied):
-			writeJSON(w, http.StatusForbidden, response{OK: false, Error: err.Error()})
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: err.Error()})
 		default:
-			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response{OK: true, Data: result})
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: result})
 }
 
-func writeJSON(w http.ResponseWriter, code int, payload response) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(payload)
+func (h *Handler) LogEvent(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || attemptID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		return
+	}
+
+	if err := h.authorizeAttemptAccess(r, user, attemptID); err != nil {
+		switch {
+		case errors.Is(err, ErrAttemptNotFound):
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrAttemptForbidden):
+			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: "forbidden"})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+		}
+		return
+	}
+
+	var req attemptEventRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	var clientTS *time.Time
+	if v := strings.TrimSpace(req.ClientTS); v != "" {
+		parsed, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid client_ts"})
+			return
+		}
+		clientTS = &parsed
+	}
+
+	event, err := h.svc.LogAttemptEvent(r.Context(), AttemptEventInput{
+		AttemptID:   attemptID,
+		EventType:   req.EventType,
+		Payload:     req.Payload,
+		ClientTS:    clientTS,
+		ActorUserID: user.ID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrAttemptNotFound):
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrInvalidEventType):
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+		}
+		return
+	}
+
+	writeJSON(w, r, http.StatusCreated, response{OK: true, Data: event})
+}
+
+func (h *Handler) ListEvents(w http.ResponseWriter, r *http.Request) {
+	attemptID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || attemptID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid attempt id"})
+		return
+	}
+	limit := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			limit = n
+		}
+	}
+
+	items, err := h.svc.ListAttemptEvents(r.Context(), attemptID, limit)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrAttemptNotFound):
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+		}
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: items})
+}
+
+func writeJSON(w http.ResponseWriter, r *http.Request, code int, payload response) {
+	if payload.OK {
+		apiresp.WriteOK(w, r, code, payload.Data)
+		return
+	}
+	apiresp.WriteError(w, r, code, payload.Error)
 }
 
 func (h *Handler) authorizeAttemptAccess(r *http.Request, user *auth.User, attemptID int64) error {

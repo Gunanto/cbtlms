@@ -19,6 +19,7 @@ var (
 	ErrAttemptForbidden   = errors.New("attempt forbidden")
 	ErrAttemptNotFinal    = errors.New("attempt not final")
 	ErrResultPolicyDenied = errors.New("result not available by review policy")
+	ErrInvalidEventType   = errors.New("invalid event type")
 )
 
 type Service struct {
@@ -66,11 +67,32 @@ type AttemptResult struct {
 }
 
 type AttemptResultItem struct {
-	QuestionID int64    `json:"question_id"`
-	Selected   []string `json:"selected"`
-	Correct    []string `json:"correct"`
-	IsCorrect  *bool    `json:"is_correct,omitempty"`
-	EarnedScore float64 `json:"earned_score"`
+	QuestionID  int64            `json:"question_id"`
+	Selected    []string         `json:"selected"`
+	Correct     []string         `json:"correct"`
+	IsCorrect   *bool            `json:"is_correct,omitempty"`
+	EarnedScore float64          `json:"earned_score"`
+	Reason      string           `json:"reason,omitempty"`
+	Breakdown   []StatementScore `json:"breakdown,omitempty"`
+}
+
+type AttemptEventInput struct {
+	AttemptID   int64
+	EventType   string
+	Payload     json.RawMessage
+	ClientTS    *time.Time
+	ActorUserID int64
+}
+
+type AttemptEvent struct {
+	ID          int64           `json:"id"`
+	AttemptID   int64           `json:"attempt_id"`
+	EventType   string          `json:"event_type"`
+	Payload     json.RawMessage `json:"payload"`
+	ClientTS    *time.Time      `json:"client_ts,omitempty"`
+	ServerTS    time.Time       `json:"server_ts"`
+	ActorUserID *int64          `json:"actor_user_id,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 type attemptRow struct {
@@ -88,10 +110,12 @@ type attemptRow struct {
 }
 
 type questionEvalRow struct {
-	QuestionID  int64
-	Weight      float64
-	Payload     []byte
-	CorrectKeys []string
+	QuestionID   int64
+	QuestionType string
+	Weight       float64
+	Payload      []byte
+	AnswerKey    []byte
+	CorrectKeys  []string
 }
 
 func NewService(db *sql.DB, defaultExamMinutes int) *Service {
@@ -288,6 +312,71 @@ func (s *Service) GetAttemptResult(ctx context.Context, attemptID int64) (*Attem
 	}, nil
 }
 
+func (s *Service) LogAttemptEvent(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error) {
+	if input.AttemptID <= 0 {
+		return nil, ErrAttemptNotFound
+	}
+
+	eventType := strings.TrimSpace(strings.ToLower(input.EventType))
+	if eventType != "tab_blur" && eventType != "reconnect" && eventType != "rapid_refresh" && eventType != "fullscreen_exit" {
+		return nil, ErrInvalidEventType
+	}
+
+	if _, err := s.loadAttemptRow(ctx, s.db, input.AttemptID); err != nil {
+		return nil, err
+	}
+
+	if len(input.Payload) == 0 {
+		input.Payload = json.RawMessage(`{}`)
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO attempt_events (attempt_id, event_type, payload, client_ts, server_ts, actor_user_id, created_at)
+		VALUES ($1, $2, $3::jsonb, $4, now(), NULLIF($5, 0), now())
+		RETURNING id, attempt_id, event_type, payload, client_ts, server_ts, actor_user_id, created_at
+	`, input.AttemptID, eventType, []byte(input.Payload), input.ClientTS, input.ActorUserID)
+
+	return scanAttemptEvent(row)
+}
+
+func (s *Service) ListAttemptEvents(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error) {
+	if attemptID <= 0 {
+		return nil, ErrAttemptNotFound
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+
+	if _, err := s.loadAttemptRow(ctx, s.db, attemptID); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, attempt_id, event_type, payload, client_ts, server_ts, actor_user_id, created_at
+		FROM attempt_events
+		WHERE attempt_id = $1
+		ORDER BY server_ts DESC, id DESC
+		LIMIT $2
+	`, attemptID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query attempt events: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]AttemptEvent, 0)
+	for rows.Next() {
+		item, err := scanAttemptEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate attempt events: %w", err)
+	}
+	return items, nil
+}
+
 func (s *Service) loadExamReviewPolicy(ctx context.Context, examID int64) (string, *time.Time, error) {
 	var policy sql.NullString
 	var endAt sql.NullTime
@@ -363,31 +452,36 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 	score := 0.0
 
 	for _, ev := range evals {
-		selected := extractSelectedKeys(ev.Payload)
-		isAnswered := len(selected) > 0
-		if isAnswered {
+		result := ScoreQuestion(ScoreInput{
+			QuestionType:  ev.QuestionType,
+			AnswerKey:     ev.AnswerKey,
+			AnswerPayload: ev.Payload,
+			CorrectKeys:   ev.CorrectKeys,
+			Weight:        ev.Weight,
+		})
+
+		if result.Answered {
 			answered++
 		}
-
-		isCorrect := false
-		earned := 0.0
-		if isAnswered && len(ev.CorrectKeys) > 0 && equalSet(selected, ev.CorrectKeys) {
-			isCorrect = true
-			earned = ev.Weight
+		if result.IsCorrect != nil && *result.IsCorrect {
 			totalCorrect++
-			score += ev.Weight
+			score += result.EarnedScore
+		} else if result.EarnedScore > 0 {
+			score += result.EarnedScore
 		}
 
 		var isCorrectPtr interface{}
-		if isAnswered {
-			isCorrectPtr = isCorrect
+		if result.IsCorrect != nil {
+			isCorrectPtr = *result.IsCorrect
 		} else {
 			isCorrectPtr = nil
 		}
 
 		feedback := map[string]interface{}{
-			"selected": selected,
-			"correct":  ev.CorrectKeys,
+			"selected":  result.Selected,
+			"correct":   result.Correct,
+			"reason":    result.Reason,
+			"breakdown": result.Breakdown,
 		}
 		feedbackJSON, _ := json.Marshal(feedback)
 
@@ -399,7 +493,7 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 				is_correct,
 				feedback
 			) VALUES ($1,$2,$3,$4,$5::jsonb)
-		`, row.ID, ev.QuestionID, earned, isCorrectPtr, feedbackJSON); err != nil {
+		`, row.ID, ev.QuestionID, result.EarnedScore, isCorrectPtr, feedbackJSON); err != nil {
 			return nil, fmt.Errorf("insert attempt_score: %w", err)
 		}
 	}
@@ -449,20 +543,33 @@ func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, exam
 	rows, err := q.QueryContext(ctx, `
 		SELECT
 			eq.question_id,
+			qn.question_type,
 			eq.weight,
 			COALESCE(aa.answer_payload, '{}'::jsonb) AS answer_payload,
+			COALESCE(qv.answer_key, '{}'::jsonb) AS answer_key,
 			COALESCE(
 				json_agg(qo.option_key) FILTER (WHERE qo.is_correct),
 				'[]'::json
 			) AS correct_keys_json
 		FROM exam_questions eq
+		JOIN questions qn
+			ON qn.id = eq.question_id
 		LEFT JOIN attempt_answers aa
 			ON aa.attempt_id = $1
 			AND aa.question_id = eq.question_id
+		LEFT JOIN LATERAL (
+			SELECT answer_key
+			FROM question_versions
+			WHERE question_id = eq.question_id
+			  AND is_active = TRUE
+			  AND status = 'final'
+			ORDER BY version_no DESC
+			LIMIT 1
+		) qv ON TRUE
 		LEFT JOIN question_options qo
 			ON qo.question_id = eq.question_id
 		WHERE eq.exam_id = $2
-		GROUP BY eq.question_id, eq.weight, aa.answer_payload, eq.seq_no
+		GROUP BY eq.question_id, qn.question_type, eq.weight, aa.answer_payload, qv.answer_key, eq.seq_no
 		ORDER BY eq.seq_no
 	`, attemptID, examID)
 	if err != nil {
@@ -474,7 +581,7 @@ func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, exam
 	for rows.Next() {
 		var r questionEvalRow
 		var correctKeysJSON []byte
-		if err := rows.Scan(&r.QuestionID, &r.Weight, &r.Payload, &correctKeysJSON); err != nil {
+		if err := rows.Scan(&r.QuestionID, &r.QuestionType, &r.Weight, &r.Payload, &r.AnswerKey, &correctKeysJSON); err != nil {
 			return nil, fmt.Errorf("scan evaluation row: %w", err)
 		}
 		if len(correctKeysJSON) > 0 {
@@ -525,6 +632,10 @@ func (s *Service) loadAttemptResultItems(ctx context.Context, attemptID int64) (
 			if err := json.Unmarshal(feedbackRaw, &f); err == nil {
 				item.Selected = anyToStringSlice(f["selected"])
 				item.Correct = anyToStringSlice(f["correct"])
+				if reason, ok := f["reason"].(string); ok {
+					item.Reason = strings.TrimSpace(reason)
+				}
+				item.Breakdown = anyToStatementScores(f["breakdown"])
 			}
 		}
 		items = append(items, item)
@@ -694,6 +805,34 @@ type queryable interface {
 	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
 }
 
+func scanAttemptEvent(scanner interface{ Scan(dest ...any) error }) (*AttemptEvent, error) {
+	var out AttemptEvent
+	var clientTS sql.NullTime
+	var actorUserID sql.NullInt64
+	if err := scanner.Scan(
+		&out.ID,
+		&out.AttemptID,
+		&out.EventType,
+		&out.Payload,
+		&clientTS,
+		&out.ServerTS,
+		&actorUserID,
+		&out.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAttemptNotFound
+		}
+		return nil, fmt.Errorf("scan attempt event: %w", err)
+	}
+	if clientTS.Valid {
+		out.ClientTS = &clientTS.Time
+	}
+	if actorUserID.Valid {
+		out.ActorUserID = &actorUserID.Int64
+	}
+	return &out, nil
+}
+
 func remainingSeconds(status string, expiresAt time.Time) int64 {
 	if status != "in_progress" {
 		return 0
@@ -796,6 +935,40 @@ func anyToStringSlice(v interface{}) []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+func anyToStatementScores(v interface{}) []StatementScore {
+	arr, ok := v.([]interface{})
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+
+	out := make([]StatementScore, 0, len(arr))
+	for _, it := range arr {
+		obj, ok := it.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		id, _ := obj["id"].(string)
+		id = strings.TrimSpace(id)
+		correct, ok := obj["correct"].(bool)
+		if id == "" || !ok {
+			continue
+		}
+		var answer *bool
+		if val, ok := obj["answer"].(bool); ok {
+			answer = &val
+		}
+		out = append(out, StatementScore{
+			ID:      id,
+			Correct: correct,
+			Answer:  answer,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
 	return out
 }
 
