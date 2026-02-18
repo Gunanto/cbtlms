@@ -1,37 +1,31 @@
 {{define "base"}}
 <!doctype html>
 <html lang="id">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{.Title}}</title>
-    <link rel="stylesheet" href="/static/css/app.css" />
-  </head>
-  <body data-page="{{.Page}}">
-    <header class="topbar">
-      <h1><a href="/" class="brand">CBT LMS</a></h1>
-      <nav class="topnav">
-        <a href="/login">Login</a>
-        <a href="/simulasi">Simulasi</a>
-        <a href="/authoring">Authoring</a>
-      </nav>
-    </header>
-    <main class="container">
-      {{if eq .Page "home_content"}}
-        {{template "home_content" .}}
-      {{else if eq .Page "login_content"}}
-        {{template "login_content" .}}
-      {{else if eq .Page "simulasi_content"}}
-        {{template "simulasi_content" .}}
-      {{else if eq .Page "authoring_content"}}
-        {{template "authoring_content" .}}
-      {{else if eq .Page "attempt_content"}}
-        {{template "attempt_content" .}}
-      {{else if eq .Page "result_content"}}
-        {{template "result_content" .}}
-      {{end}}
-    </main>
-    <script src="/static/js/app.js"></script>
-  </body>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{{.Title}}</title>
+        <link rel="stylesheet" href="/static/css/app.css" />
+    </head>
+    <body data-page="{{.Page}}">
+        <header class="topbar">
+            <h1><a href="/" class="brand">CBT LMS</a></h1>
+            <nav class="topnav">
+                <a href="/simulasi">Login</a>
+                <a href="/simulasi">Simulasi</a>
+                <a href="/authoring">Authoring</a>
+            </nav>
+        </header>
+        <main class="container">
+            {{if eq .Page "home_content"}} {{template "home_content" .}} {{else
+            if eq .Page "login_content"}} {{template "login_content" .}} {{else
+            if eq .Page "simulasi_content"}} {{template "simulasi_content" .}}
+            {{else if eq .Page "authoring_content"}} {{template
+            "authoring_content" .}} {{else if eq .Page "attempt_content"}}
+            {{template "attempt_content" .}} {{else if eq .Page
+            "result_content"}} {{template "result_content" .}} {{end}}
+        </main>
+        <script src="/static/js/app.js"></script>
+    </body>
 </html>
 {{end}}
