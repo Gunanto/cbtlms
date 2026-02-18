@@ -80,6 +80,9 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	r.Get("/simulasi", func(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "simulasi_content", "Pilih Simulasi", map[string]any{})
 	})
+	r.Get("/authoring", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "authoring_content", "Authoring Soal", map[string]any{})
+	})
 	r.Get("/ujian/{id}", func(w http.ResponseWriter, r *http.Request) {
 		attemptID := chi.URLParam(r, "id")
 		renderPage(w, "attempt_content", "Pengerjaan Ujian", map[string]any{
