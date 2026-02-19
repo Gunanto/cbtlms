@@ -51,3 +51,55 @@ func TestValidateAnswerKey(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeAndValidateOptions(t *testing.T) {
+	t.Run("mc valid", func(t *testing.T) {
+		out, correct, err := normalizeAndValidateOptions(
+			"pg_tunggal",
+			[]QuestionOptionInput{
+				{OptionKey: "a", OptionHTML: "<p>A</p>"},
+				{OptionKey: "b", OptionHTML: "<p>B</p>"},
+			},
+			json.RawMessage(`{"correct":"A"}`),
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(out) != 2 {
+			t.Fatalf("expected 2 options, got %d", len(out))
+		}
+		if !correct["A"] {
+			t.Fatalf("expected correct key A")
+		}
+	})
+
+	t.Run("mr invalid unknown key", func(t *testing.T) {
+		_, _, err := normalizeAndValidateOptions(
+			"multi_jawaban",
+			[]QuestionOptionInput{
+				{OptionKey: "A", OptionHTML: "<p>A</p>"},
+				{OptionKey: "B", OptionHTML: "<p>B</p>"},
+			},
+			json.RawMessage(`{"correct":["A","C"],"mode":"exact"}`),
+		)
+		if err == nil {
+			t.Fatalf("expected error for unknown answer_key option")
+		}
+	})
+
+	t.Run("tf ignore options", func(t *testing.T) {
+		out, correct, err := normalizeAndValidateOptions(
+			"benar_salah_pernyataan",
+			[]QuestionOptionInput{
+				{OptionKey: "A", OptionHTML: "<p>A</p>"},
+			},
+			json.RawMessage(`{"statements":[{"id":"s1","correct":true}]}`),
+		)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if out != nil || correct != nil {
+			t.Fatalf("expected nil output for tf, got out=%v correct=%v", out, correct)
+		}
+	})
+}

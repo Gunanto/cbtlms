@@ -1,0 +1,941 @@
+{{define "guru_content"}}
+<section class="card">
+    <section class="admin-layout">
+        <aside class="panel admin-sidebar">
+            <h3>Menu Guru</h3>
+            <div class="admin-menu-list mt">
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn active"
+                    data-guru-menu="dashboard"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M4 13h7V4H4zM13 20h7v-7h-7zM13 4h7v7h-7zM4 20h7v-5H4z"
+                            />
+                        </svg>
+                    </span>
+                    Dashboard
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn"
+                    data-guru-menu="subjects"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M5 3h14a2 2 0 0 1 2 2v14l-4-3-4 3-4-3-4 3V5a2 2 0 0 1 2-2z"
+                            />
+                        </svg>
+                    </span>
+                    Mapel Aktif
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn active"
+                    data-guru-menu="reviews"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M4 6h16M4 12h16M4 18h10" />
+                        </svg>
+                    </span>
+                    Tugas Reviu
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn"
+                    data-guru-menu="blueprints"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M4 5h16v14H4z" />
+                            <path d="M8 9h8M8 13h6" />
+                        </svg>
+                    </span>
+                    Kisi-Kisi
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn"
+                    data-guru-menu="stimuli"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M12 3v18M3 12h18" />
+                        </svg>
+                    </span>
+                    Stimuli
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn"
+                    data-guru-menu="manuscripts"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M4 19.5V5a2 2 0 0 1 2-2h11l3 3v13.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z"
+                            />
+                            <path d="M14 3v4h4" />
+                        </svg>
+                    </span>
+                    Naskah Soal
+                </button>
+            </div>
+            <div class="admin-menu-list mt">
+                <a class="btn btn-secondary admin-menu-btn" href="/authoring">
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25z"
+                            />
+                            <path d="M14.05 6.2l3.75 3.75" />
+                        </svg>
+                    </span>
+                    Buka Authoring
+                </a>
+                <a class="btn btn-secondary admin-menu-btn" href="/simulasi">
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M5 3h14a2 2 0 0 1 2 2v14l-4-3-4 3-4-3-4 3V5a2 2 0 0 1 2-2z"
+                            />
+                        </svg>
+                    </span>
+                    Buka Simulasi
+                </a>
+            </div>
+        </aside>
+
+        <div class="admin-content">
+            <section id="guru-dashboard-panel" class="panel dashboard-hero">
+                <div class="dashboard-hero-head">
+                    <div>
+                        <h2>Dashboard Guru</h2>
+                        <p class="muted">
+                            Ringkasan tugas reviu dan workflow penyusunan
+                            kisi-kisi, stimuli, dan naskah soal.
+                        </p>
+                    </div>
+                    <div class="dashboard-quick-actions">
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-guru-jump="reviews"
+                        >
+                            Tugas Reviu
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-guru-jump="blueprints"
+                        >
+                            Kisi-Kisi
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-guru-jump="stimuli"
+                        >
+                            Stimuli
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-guru-jump="manuscripts"
+                        >
+                            Naskah Soal
+                        </button>
+                    </div>
+                </div>
+                <div
+                    id="guru-message"
+                    class="box mt dashboard-hero-message"
+                    role="status"
+                    aria-live="polite"
+                >
+                    Memuat data dashboard guru...
+                </div>
+                <div class="proktor-stats-grid mt">
+                    <article class="admin-stat-card stat-guru">
+                        <div class="stat-label">Mapel Aktif</div>
+                        <div id="guru-stat-subjects" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-admin">
+                        <div class="stat-label">Jenjang Tersedia</div>
+                        <div id="guru-stat-levels" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-proktor">
+                        <div class="stat-label">Reviu Menunggu</div>
+                        <div id="guru-stat-review-pending" class="stat-value">
+                            0
+                        </div>
+                    </article>
+                    <article class="admin-stat-card stat-sekolah">
+                        <div class="stat-label">Total Tugas Reviu</div>
+                        <div id="guru-stat-review-total" class="stat-value">
+                            0
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <section id="guru-reviews-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Tugas Reviu Saya</h3>
+                    <button
+                        id="guru-reviews-refresh-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Muat Tugas Reviu
+                    </button>
+                </div>
+
+                <form id="guru-reviews-filter-form" class="form-grid mt">
+                    <label>
+                        Status
+                        <select name="status">
+                            <option value="">semua</option>
+                            <option value="menunggu_reviu">
+                                menunggu_reviu
+                            </option>
+                            <option value="disetujui">disetujui</option>
+                            <option value="perlu_revisi">perlu_revisi</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Terapkan Filter
+                    </button>
+                </form>
+
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>Task ID</th>
+                                <th>Question ID</th>
+                                <th>Status</th>
+                                <th>Ditugaskan</th>
+                                <th>Direviu</th>
+                                <th>Catatan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-reviews-body">
+                            <tr>
+                                <td colspan="7" class="muted">
+                                    Belum ada data tugas reviu.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="guru-blueprints-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Kisi-Kisi Soal</h3>
+                    <button
+                        id="guru-blueprint-refresh-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Muat Kisi-Kisi
+                    </button>
+                </div>
+                <form id="guru-blueprint-form" class="form-grid mt">
+                    <label
+                        >Mapel
+                        <select
+                            id="guru-blueprint-subject-select"
+                            name="subject_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Tipe Soal
+                        <select name="question_type" required>
+                            <option value="pg_tunggal">pg_tunggal</option>
+                            <option value="multi_jawaban">multi_jawaban</option>
+                            <option value="benar_salah_pernyataan">
+                                benar_salah_pernyataan
+                            </option>
+                        </select>
+                    </label>
+                    <label
+                        >Judul Kisi-Kisi
+                        <input type="text" name="title" required
+                    /></label>
+                    <label
+                        >Indikator
+                        <textarea name="indicator" rows="2"></textarea>
+                    </label>
+                    <label
+                        >Materi <textarea name="material" rows="2"></textarea>
+                    </label>
+                    <label
+                        >Tujuan Pembelajaran
+                        <textarea name="objective" rows="2"></textarea>
+                    </label>
+                    <label
+                        >Level Kognitif
+                        <input type="text" name="cognitive_level"
+                    /></label>
+                    <button class="btn" type="submit">Simpan Kisi-Kisi</button>
+                </form>
+
+                <form id="guru-blueprint-filter-form" class="form-grid mt">
+                    <label
+                        >Filter Mapel
+                        <select
+                            id="guru-blueprint-filter-subject"
+                            name="subject_id"
+                        ></select>
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Terapkan Filter
+                    </button>
+                </form>
+
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Mapel</th>
+                                <th>Tipe</th>
+                                <th>Judul</th>
+                                <th>Indikator</th>
+                                <th>Materi</th>
+                                <th>Level Kognitif</th>
+                                <th>Dibuat</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-blueprint-body">
+                            <tr>
+                                <td colspan="8" class="muted">
+                                    Belum ada data kisi-kisi.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="guru-stimuli-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Stimuli</h3>
+                    <div class="action-icons">
+                        <button
+                            id="guru-stimulus-template-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Template CSV
+                        </button>
+                        <button
+                            id="guru-stimulus-refresh-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Muat Stimuli
+                        </button>
+                    </div>
+                </div>
+
+                <form id="guru-stimulus-import-form" class="form-grid mt">
+                    <label
+                        >Import Stimuli (CSV)
+                        <input
+                            id="guru-stimulus-import-file"
+                            name="file"
+                            type="file"
+                            accept=".csv,text/csv"
+                            required
+                        />
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Import CSV
+                    </button>
+                </form>
+
+                <form id="guru-stimulus-form" class="form-grid mt">
+                    <label
+                        >Mapel
+                        <select
+                            id="guru-stimulus-subject-select"
+                            name="subject_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Judul Stimulus
+                        <input type="text" name="title" required
+                    /></label>
+                    <label
+                        >Tipe
+                        <select name="stimulus_type">
+                            <option value="single">single</option>
+                            <option value="multiteks">multiteks</option>
+                        </select>
+                    </label>
+                    <div
+                        id="guru-stimulus-inline-error"
+                        class="box field-error"
+                        hidden
+                    ></div>
+                    <section
+                        id="guru-stimulus-single-panel"
+                        class="panel stimulus-editor-wrap"
+                    >
+                        <h4>Konten Single</h4>
+                        <div
+                            id="guru-stimulus-single-editor"
+                            class="quill-editor-shell mt"
+                        ></div>
+                    </section>
+
+                    <section
+                        id="guru-stimulus-multiteks-panel"
+                        class="panel"
+                        hidden
+                    >
+                        <div class="admin-section-head">
+                            <h4>Konten Multiteks</h4>
+                            <button
+                                id="guru-stimulus-add-tab-btn"
+                                class="btn btn-secondary btn-inline"
+                                type="button"
+                            >
+                                Tambah Tab
+                            </button>
+                        </div>
+                        <div id="guru-stimulus-tabs"></div>
+                    </section>
+                </form>
+                <div class="mt stimulus-submit-row">
+                    <button class="btn" type="submit" form="guru-stimulus-form">
+                        Simpan Stimulus
+                    </button>
+                </div>
+                <section class="panel mt">
+                    <h4>Preview Stimulus Baru</h4>
+                    <div
+                        id="guru-stimulus-live-preview"
+                        class="box mt"
+                        aria-live="polite"
+                    >
+                        Konten preview akan muncul di sini.
+                    </div>
+                </section>
+
+                <form id="guru-stimulus-list-form" class="form-grid mt">
+                    <label
+                        >Filter Mapel
+                        <select
+                            id="guru-stimulus-list-subject"
+                            name="subject_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Cari Judul
+                        <input
+                            id="guru-stimulus-search"
+                            name="search"
+                            type="text"
+                            placeholder="Ketik judul stimulus"
+                        />
+                    </label>
+                    <label
+                        >Batas Data
+                        <select id="guru-stimulus-page-size" name="limit">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Muat Stimuli
+                    </button>
+                </form>
+
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Mapel</th>
+                                <th>Judul</th>
+                                <th>Tipe</th>
+                                <th>Dibuat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-stimulus-body">
+                            <tr>
+                                <td colspan="6" class="muted">
+                                    Belum ada data stimuli.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="admin-section-head mt">
+                    <div id="guru-stimulus-page-info" class="muted">
+                        Baris 0 - 0
+                    </div>
+                    <div class="action-icons">
+                        <button
+                            id="guru-stimulus-prev-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Sebelumnya
+                        </button>
+                        <button
+                            id="guru-stimulus-next-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Berikutnya
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="guru-manuscripts-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Naskah Soal</h3>
+                    <button
+                        id="guru-manuscript-refresh-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Muat Naskah
+                    </button>
+                </div>
+
+                <form id="guru-manuscript-form" class="form-grid mt">
+                    <label
+                        >Kisi-Kisi
+                        <select
+                            id="guru-manuscript-question-select"
+                            name="question_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Stimulus
+                        <select
+                            id="guru-manuscript-stimulus-select"
+                            name="stimulus_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Tipe Soal
+                        <select id="guru-manuscript-question-type-ui">
+                            <option value="">Pilih Kisi-Kisi dulu</option>
+                            <option value="pg_tunggal">MC</option>
+                            <option value="multi_jawaban">MR</option>
+                            <option value="benar_salah_pernyataan">TF</option>
+                        </select>
+                    </label>
+                    <section class="panel stimulus-editor-wrap">
+                        <h4>Naskah Soal (Stem)</h4>
+                        <div
+                            id="guru-manuscript-stem-editor"
+                            class="quill-editor-shell mt"
+                        ></div>
+                        <input
+                            type="hidden"
+                            name="stem_html"
+                            id="guru-manuscript-stem-html"
+                        />
+                    </section>
+                    <section id="guru-manuscript-options-panel" class="panel">
+                        <div class="admin-section-head">
+                            <h4>Opsi Jawaban</h4>
+                            <button
+                                id="guru-manuscript-add-option-btn"
+                                class="btn btn-secondary btn-inline"
+                                type="button"
+                            >
+                                Tambah Opsi
+                            </button>
+                        </div>
+                        <div id="guru-manuscript-options" class="mt"></div>
+                    </section>
+                    <section id="guru-manuscript-key-builder" class="panel">
+                        <h4>Kunci Jawaban</h4>
+                        <div id="guru-manuscript-key-mc" class="mt" hidden>
+                            <div class="muted">Pilih 1 jawaban benar (MC).</div>
+                            <div
+                                id="guru-manuscript-key-mc-options"
+                                class="mt"
+                            ></div>
+                        </div>
+                        <div id="guru-manuscript-key-mr" class="mt" hidden>
+                            <div class="muted">
+                                Pilih satu/lebih jawaban benar (MR).
+                            </div>
+                            <div
+                                id="guru-manuscript-key-mr-options"
+                                class="mt"
+                            ></div>
+                        </div>
+                        <div id="guru-manuscript-key-tf" class="mt" hidden>
+                            <div class="admin-section-head">
+                                <div class="muted">
+                                    Mapping pernyataan benar/salah (TF).
+                                </div>
+                                <button
+                                    id="guru-manuscript-add-statement-btn"
+                                    class="btn btn-secondary btn-inline"
+                                    type="button"
+                                >
+                                    Tambah Pernyataan
+                                </button>
+                            </div>
+                            <div
+                                id="guru-manuscript-statements"
+                                class="mt"
+                            ></div>
+                        </div>
+                    </section>
+                    <label
+                        >Kunci Jawaban JSON (otomatis)
+                        <textarea
+                            name="answer_key_raw"
+                            id="guru-manuscript-answer-key-raw"
+                            rows="4"
+                            required
+                            readonly
+                        ></textarea>
+                    </label>
+                    <section class="panel stimulus-editor-wrap">
+                        <h4>Penjelasan (opsional)</h4>
+                        <div
+                            id="guru-manuscript-explanation-editor"
+                            class="quill-editor-shell mt"
+                        ></div>
+                        <input
+                            type="hidden"
+                            name="explanation_html"
+                            id="guru-manuscript-explanation-html"
+                        />
+                    </section>
+                    <section class="panel stimulus-editor-wrap">
+                        <h4>Hint (opsional)</h4>
+                        <div
+                            id="guru-manuscript-hint-editor"
+                            class="quill-editor-shell mt"
+                        ></div>
+                        <input
+                            type="hidden"
+                            name="hint_html"
+                            id="guru-manuscript-hint-html"
+                        />
+                    </section>
+                </form>
+                <div class="mt manuscript-submit-row">
+                    <button
+                        class="btn"
+                        type="submit"
+                        form="guru-manuscript-form"
+                    >
+                        Simpan Draft Naskah
+                    </button>
+                </div>
+
+                <form id="guru-manuscript-list-form" class="form-grid mt">
+                    <label
+                        >Lihat Versi Naskah dari Kisi-Kisi
+                        <select
+                            id="guru-manuscript-list-question-select"
+                            name="question_id"
+                            required
+                        ></select>
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Muat Versi
+                    </button>
+                </form>
+
+                <form id="guru-manuscript-finalize-form" class="form-grid mt">
+                    <label
+                        >Kisi-Kisi
+                        <select
+                            id="guru-manuscript-finalize-question-select"
+                            name="question_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Version No
+                        <input
+                            type="number"
+                            name="version_no"
+                            min="1"
+                            required
+                        />
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Finalize Versi
+                    </button>
+                </form>
+
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>QVID</th>
+                                <th>Question ID</th>
+                                <th>Version</th>
+                                <th>Stimulus ID</th>
+                                <th>Status</th>
+                                <th>Dibuat</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-manuscript-body">
+                            <tr>
+                                <td colspan="6" class="muted">
+                                    Belum ada data versi naskah.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="guru-subjects-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Mapel Aktif</h3>
+                    <div class="action-icons">
+                        <button
+                            id="guru-subjects-add-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Tambah Mapel
+                        </button>
+                        <button
+                            id="guru-subjects-refresh-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Muat Mapel
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Jenjang</th>
+                                <th>Tipe</th>
+                                <th>Nama Mapel</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-subjects-body">
+                            <tr>
+                                <td colspan="5" class="muted">
+                                    Belum ada data mapel.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </section>
+</section>
+
+<dialog id="guru-review-decision-dialog" class="admin-dialog">
+    <form id="guru-review-decision-form" class="form-grid">
+        <h3 id="guru-review-decision-title">Keputusan Reviu</h3>
+        <p id="guru-review-decision-help" class="muted"></p>
+        <input type="hidden" name="task_id" />
+        <input type="hidden" name="status" />
+        <label>
+            Catatan
+            <textarea
+                id="guru-review-note"
+                name="note"
+                rows="4"
+                placeholder="Wajib diisi jika perlu revisi"
+            ></textarea>
+        </label>
+        <div class="actions">
+            <button
+                id="guru-review-decision-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button
+                id="guru-review-decision-submit-btn"
+                class="btn"
+                type="submit"
+            >
+                Simpan
+            </button>
+        </div>
+    </form>
+</dialog>
+<dialog id="guru-stimulus-preview-dialog" class="admin-dialog">
+    <form method="dialog" class="form-grid">
+        <h3 id="guru-stimulus-preview-title">Preview Stimulus</h3>
+        <div id="guru-stimulus-preview-content" class="box"></div>
+        <div class="actions">
+            <button class="btn btn-secondary" type="submit">Tutup</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-stimulus-edit-dialog" class="admin-dialog">
+    <form id="guru-stimulus-edit-form" class="form-grid">
+        <h3>Ubah Stimulus</h3>
+        <input type="hidden" name="id" />
+        <label>
+            Mapel
+            <select
+                id="guru-stimulus-edit-subject"
+                name="subject_id"
+                required
+            ></select>
+        </label>
+        <label>
+            Judul Stimulus
+            <input type="text" name="title" required />
+        </label>
+        <label>
+            Tipe
+            <select name="stimulus_type" required>
+                <option value="single">single</option>
+                <option value="multiteks">multiteks</option>
+            </select>
+        </label>
+        <label>
+            Konten JSON
+            <textarea name="content_raw" rows="8" required></textarea>
+        </label>
+        <div class="actions">
+            <button
+                id="guru-stimulus-edit-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn" type="submit">Simpan</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-stimulus-delete-dialog" class="admin-dialog">
+    <form id="guru-stimulus-delete-form" class="form-grid">
+        <h3>Hapus Stimulus</h3>
+        <p id="guru-stimulus-delete-label" class="muted"></p>
+        <input type="hidden" name="id" />
+        <div class="actions">
+            <button
+                id="guru-stimulus-delete-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn btn-danger" type="submit">Hapus</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-stimulus-import-error-dialog" class="admin-dialog">
+    <form class="form-grid" method="dialog">
+        <h3>Peringatan Import Stimuli</h3>
+        <p class="muted">
+            Beberapa baris gagal diproses. Periksa detail berikut:
+        </p>
+        <pre id="guru-stimulus-import-error-output" class="box code-box"></pre>
+        <div class="actions">
+            <button
+                id="guru-stimulus-import-download-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Unduh Laporan Gagal (CSV)
+            </button>
+            <button
+                id="guru-stimulus-import-error-close-btn"
+                class="btn btn-secondary"
+                type="submit"
+            >
+                Tutup
+            </button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-subject-dialog" class="admin-dialog">
+    <form id="guru-subject-form" class="form-grid">
+        <h3 id="guru-subject-dialog-title">Tambah Mapel</h3>
+        <input type="hidden" name="id" />
+        <label>
+            Jenjang
+            <select
+                id="guru-subject-education-level"
+                name="education_level"
+                required
+            >
+                <option value="">Pilih Jenjang</option>
+            </select>
+        </label>
+        <label>
+            Tipe
+            <input type="text" name="subject_type" required />
+        </label>
+        <label>
+            Nama Mapel
+            <input type="text" name="name" required />
+        </label>
+        <div class="actions">
+            <button
+                id="guru-subject-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn" type="submit">Simpan</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-subject-delete-dialog" class="admin-dialog">
+    <form id="guru-subject-delete-form" class="form-grid">
+        <h3>Hapus Mapel</h3>
+        <p id="guru-subject-delete-label" class="muted"></p>
+        <input type="hidden" name="id" />
+        <div class="actions">
+            <button
+                id="guru-subject-delete-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn btn-danger" type="submit">Hapus</button>
+        </div>
+    </form>
+</dialog>
+{{end}}

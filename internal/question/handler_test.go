@@ -15,8 +15,12 @@ import (
 )
 
 type mockQuestionService struct {
+	createQuestionFn     func(ctx context.Context, in CreateQuestionInput) (*QuestionBlueprint, error)
+	listQuestionsFn      func(ctx context.Context, subjectID int64) ([]QuestionBlueprint, error)
 	createFn             func(ctx context.Context, in CreateStimulusInput) (*Stimulus, error)
 	listFn               func(ctx context.Context, subjectID int64) ([]Stimulus, error)
+	updateStimulusFn     func(ctx context.Context, in UpdateStimulusInput) (*Stimulus, error)
+	deleteStimulusFn     func(ctx context.Context, stimulusID int64) error
 	createVersionFn      func(ctx context.Context, in CreateQuestionVersionInput) (*QuestionVersion, error)
 	finalizeFn           func(ctx context.Context, questionID int64, versionNo int) (*QuestionVersion, error)
 	listVersionsFn       func(ctx context.Context, questionID int64) ([]QuestionVersion, error)
@@ -28,6 +32,20 @@ type mockQuestionService struct {
 	decideReviewTaskFn   func(ctx context.Context, in ReviewDecisionInput) (*ReviewTask, error)
 	listReviewTasksFn    func(ctx context.Context, reviewerID int64, status string) ([]ReviewTask, error)
 	getQuestionReviewsFn func(ctx context.Context, questionID int64) ([]QuestionReview, error)
+}
+
+func (m *mockQuestionService) CreateQuestion(ctx context.Context, in CreateQuestionInput) (*QuestionBlueprint, error) {
+	if m.createQuestionFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.createQuestionFn(ctx, in)
+}
+
+func (m *mockQuestionService) ListQuestions(ctx context.Context, subjectID int64) ([]QuestionBlueprint, error) {
+	if m.listQuestionsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listQuestionsFn(ctx, subjectID)
 }
 
 func (m *mockQuestionService) CreateStimulus(ctx context.Context, in CreateStimulusInput) (*Stimulus, error) {
@@ -42,6 +60,20 @@ func (m *mockQuestionService) ListStimuliBySubject(ctx context.Context, subjectI
 		return nil, errors.New("not implemented")
 	}
 	return m.listFn(ctx, subjectID)
+}
+
+func (m *mockQuestionService) UpdateStimulus(ctx context.Context, in UpdateStimulusInput) (*Stimulus, error) {
+	if m.updateStimulusFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.updateStimulusFn(ctx, in)
+}
+
+func (m *mockQuestionService) DeleteStimulus(ctx context.Context, stimulusID int64) error {
+	if m.deleteStimulusFn == nil {
+		return errors.New("not implemented")
+	}
+	return m.deleteStimulusFn(ctx, stimulusID)
 }
 
 func (m *mockQuestionService) CreateQuestionVersion(ctx context.Context, in CreateQuestionVersionInput) (*QuestionVersion, error) {

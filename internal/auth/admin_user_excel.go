@@ -35,7 +35,18 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 
 	f := excelize.NewFile()
 	sheet := f.GetSheetName(0)
-	headers := []string{"username", "email", "full_name", "role", "school_name", "is_active", "account_status", "created_at"}
+	headers := []string{
+		"username",
+		"email",
+		"full_name",
+		"role",
+		"school_name",
+		"class_name",
+		"grade_level",
+		"is_active",
+		"account_status",
+		"created_at",
+	}
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		_ = f.SetCellValue(sheet, cell, h)
@@ -50,12 +61,22 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 		if it.SchoolName != nil {
 			schoolName = strings.TrimSpace(*it.SchoolName)
 		}
+		className := ""
+		if it.ClassName != nil {
+			className = strings.TrimSpace(*it.ClassName)
+		}
+		gradeLevel := ""
+		if it.ClassGrade != nil {
+			gradeLevel = strings.TrimSpace(*it.ClassGrade)
+		}
 		values := []any{
 			it.Username,
 			email,
 			it.FullName,
 			it.Role,
 			schoolName,
+			className,
+			gradeLevel,
 			it.IsActive,
 			it.AccountStatus,
 			it.CreatedAt.Format("2006-01-02 15:04:05"),
@@ -65,11 +86,57 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 			_ = f.SetCellValue(sheet, cell, v)
 		}
 	}
-	_ = f.SetColWidth(sheet, "A", "H", 22)
+	_ = f.SetColWidth(sheet, "A", "J", 22)
 
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
 		return nil, fmt.Errorf("write excel: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func (s *Service) ExportUserImportTemplateExcel() ([]byte, error) {
+	f := excelize.NewFile()
+	sheet := f.GetSheetName(0)
+	headers := []string{
+		"username",
+		"email",
+		"full_name",
+		"role",
+		"password",
+		"school_name",
+		"class_name",
+		"grade_level",
+		"is_active",
+	}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		_ = f.SetCellValue(sheet, cell, h)
+	}
+
+	exampleRows := [][]any{
+		{"siswa_demo_001", "siswa001@example.com", "Siswa Demo 001", "siswa", "password123", "SMPN 1 Punggur", "TKA Matematika", "Kelas 9", "true"},
+		{"guru_demo_001", "guru001@example.com", "Guru Demo 001", "guru", "password123", "", "", "", "true"},
+	}
+	for i, row := range exampleRows {
+		rowNo := i + 2
+		for j, v := range row {
+			cell, _ := excelize.CoordinatesToCellName(j+1, rowNo)
+			_ = f.SetCellValue(sheet, cell, v)
+		}
+	}
+
+	noteRow := len(exampleRows) + 4
+	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow), "Catatan:")
+	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+1), "- role siswa wajib isi school_name, class_name, grade_level.")
+	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+2), "- school_name dan class_name+grade_level harus sudah ada di Data Master.")
+	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+3), "- role admin/proktor/guru boleh kosongkan kolom kelas.")
+
+	_ = f.SetColWidth(sheet, "A", "I", 24)
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, fmt.Errorf("write import template excel: %w", err)
 	}
 	return buf.Bytes(), nil
 }
@@ -124,6 +191,9 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 		email := strings.ToLower(get("email"))
 		password := get("password")
 		activeRaw := strings.ToLower(get("is_active"))
+		schoolName := get("school_name")
+		className := get("class_name")
+		gradeLevel := get("grade_level")
 
 		if username == "" || fullName == "" || !isValidRole(role) {
 			report.FailedRows++
@@ -144,6 +214,33 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 				})
 				continue
 			}
+		}
+		var schoolID *int64
+		var classID *int64
+		isSiswa := role == "siswa"
+		containsPlacement := strings.TrimSpace(schoolName) != "" || strings.TrimSpace(className) != "" || strings.TrimSpace(gradeLevel) != ""
+		if isSiswa || containsPlacement {
+			if strings.TrimSpace(schoolName) == "" || strings.TrimSpace(className) == "" || strings.TrimSpace(gradeLevel) == "" {
+				report.FailedRows++
+				report.Errors = append(report.Errors, UserImportRowError{
+					Row:      rowNo,
+					Username: username,
+					Error:    "untuk role siswa, school_name, class_name, grade_level wajib diisi",
+				})
+				continue
+			}
+			sid, cid, resolveErr := s.resolveEnrollmentFromNames(ctx, schoolName, className, gradeLevel)
+			if resolveErr != nil {
+				report.FailedRows++
+				report.Errors = append(report.Errors, UserImportRowError{
+					Row:      rowNo,
+					Username: username,
+					Error:    resolveErr.Error(),
+				})
+				continue
+			}
+			schoolID = &sid
+			classID = &cid
 		}
 
 		var userID int64
@@ -174,6 +271,8 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 				Password: password,
 				FullName: fullName,
 				Role:     role,
+				SchoolID: schoolID,
+				ClassID:  classID,
 			})
 			if err != nil {
 				report.FailedRows++
@@ -191,6 +290,8 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 				Email:    email,
 				Role:     role,
 				Password: password,
+				SchoolID: schoolID,
+				ClassID:  classID,
 			}); err != nil {
 				report.FailedRows++
 				report.Errors = append(report.Errors, UserImportRowError{
@@ -213,6 +314,43 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 	}
 
 	return report, nil
+}
+
+func (s *Service) resolveEnrollmentFromNames(ctx context.Context, schoolName, className, gradeLevel string) (int64, int64, error) {
+	schoolName = strings.TrimSpace(schoolName)
+	className = strings.TrimSpace(className)
+	gradeLevel = strings.TrimSpace(gradeLevel)
+
+	var schoolID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM schools
+		WHERE LOWER(name) = LOWER($1)
+		  AND is_active = TRUE
+		LIMIT 1
+	`, schoolName).Scan(&schoolID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, fmt.Errorf("school_name tidak ditemukan: %s", schoolName)
+		}
+		return 0, 0, fmt.Errorf("lookup school_name gagal: %w", err)
+	}
+
+	var classID int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM classes
+		WHERE school_id = $1
+		  AND LOWER(name) = LOWER($2)
+		  AND LOWER(grade_level) = LOWER($3)
+		  AND is_active = TRUE
+		LIMIT 1
+	`, schoolID, className, gradeLevel).Scan(&classID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, fmt.Errorf("kelas tidak ditemukan: %s | %s | %s", schoolName, gradeLevel, className)
+		}
+		return 0, 0, fmt.Errorf("lookup kelas gagal: %w", err)
+	}
+	return schoolID, classID, nil
 }
 
 func parseBoolLoose(v string) bool {

@@ -13,6 +13,7 @@ import (
 var (
 	ErrInvalidInput       = errors.New("invalid input")
 	ErrSubjectNotFound    = errors.New("subject not found")
+	ErrStimulusNotFound   = errors.New("stimulus not found")
 	ErrExamNotFound       = errors.New("exam not found")
 	ErrQuestionNotFound   = errors.New("question not found")
 	ErrParallelNotFound   = errors.New("question parallel not found")
@@ -46,6 +47,44 @@ type Stimulus struct {
 	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
+type UpdateStimulusInput struct {
+	ID           int64
+	SubjectID    int64
+	Title        string
+	StimulusType string
+	Content      json.RawMessage
+}
+
+type CreateQuestionInput struct {
+	SubjectID      int64
+	QuestionType   string
+	Title          string
+	Indicator      string
+	Material       string
+	Objective      string
+	CognitiveLevel string
+	Difficulty     *int
+	CreatedBy      int64
+}
+
+type QuestionBlueprint struct {
+	ID             int64           `json:"id"`
+	SubjectID      int64           `json:"subject_id"`
+	EducationLevel string          `json:"education_level"`
+	SubjectType    string          `json:"subject_type"`
+	SubjectName    string          `json:"subject_name"`
+	QuestionType   string          `json:"question_type"`
+	Title          string          `json:"title"`
+	Indicator      string          `json:"indicator"`
+	Material       string          `json:"material"`
+	Objective      string          `json:"objective"`
+	CognitiveLevel string          `json:"cognitive_level"`
+	Difficulty     *int            `json:"difficulty,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	Metadata       json.RawMessage `json:"metadata,omitempty"`
+}
+
 type CreateQuestionVersionInput struct {
 	QuestionID      int64
 	StimulusID      *int64
@@ -53,10 +92,16 @@ type CreateQuestionVersionInput struct {
 	ExplanationHTML *string
 	HintHTML        *string
 	AnswerKey       json.RawMessage
+	Options         []QuestionOptionInput
 	DurationSeconds *int
 	Weight          *float64
 	ChangeNote      *string
 	CreatedBy       int64
+}
+
+type QuestionOptionInput struct {
+	OptionKey  string `json:"option_key"`
+	OptionHTML string `json:"option_html"`
 }
 
 type QuestionVersion struct {
@@ -149,6 +194,179 @@ type QuestionReview struct {
 
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
+}
+
+func normalizeQuestionType(v string) string {
+	v = strings.TrimSpace(strings.ToLower(v))
+	switch v {
+	case "pg_tunggal", "multi_jawaban", "benar_salah_pernyataan":
+		return v
+	default:
+		return ""
+	}
+}
+
+func nullableDifficulty(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func populateBlueprintMetadata(out *QuestionBlueprint, raw json.RawMessage) {
+	if out == nil || len(raw) == 0 {
+		return
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return
+	}
+	getText := func(key string) string {
+		rawValue, ok := obj[key]
+		if !ok || rawValue == nil {
+			return ""
+		}
+		s, ok := rawValue.(string)
+		if !ok {
+			return ""
+		}
+		return strings.TrimSpace(s)
+	}
+	out.Title = getText("title")
+	out.Indicator = getText("indicator")
+	out.Material = getText("material")
+	out.Objective = getText("objective")
+	out.CognitiveLevel = getText("cognitive_level")
+}
+
+func (s *Service) CreateQuestion(ctx context.Context, in CreateQuestionInput) (*QuestionBlueprint, error) {
+	in.QuestionType = normalizeQuestionType(in.QuestionType)
+	in.Title = strings.TrimSpace(in.Title)
+	in.Indicator = strings.TrimSpace(in.Indicator)
+	in.Material = strings.TrimSpace(in.Material)
+	in.Objective = strings.TrimSpace(in.Objective)
+	in.CognitiveLevel = strings.TrimSpace(in.CognitiveLevel)
+
+	if in.SubjectID <= 0 || in.QuestionType == "" || in.Title == "" {
+		return nil, ErrInvalidInput
+	}
+	if in.Difficulty != nil && (*in.Difficulty < 1 || *in.Difficulty > 5) {
+		return nil, fmt.Errorf("%w: difficulty must be between 1 and 5", ErrInvalidInput)
+	}
+
+	var subject struct {
+		educationLevel string
+		subjectType    string
+		name           string
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT education_level, subject_type, name
+		FROM subjects
+		WHERE id = $1 AND is_active = TRUE
+	`, in.SubjectID).Scan(&subject.educationLevel, &subject.subjectType, &subject.name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrSubjectNotFound
+		}
+		return nil, fmt.Errorf("load subject: %w", err)
+	}
+
+	metaRaw, err := json.Marshal(map[string]any{
+		"title":           in.Title,
+		"indicator":       in.Indicator,
+		"material":        in.Material,
+		"objective":       in.Objective,
+		"cognitive_level": in.CognitiveLevel,
+		"created_via":     "guru_dashboard",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	stem := "<p>Draft naskah soal: " + in.Title + "</p>"
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO questions (
+			subject_id, question_type, stem_html, stimulus_html, difficulty,
+			metadata, is_active, version, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, NULL, $4, $5::jsonb, TRUE, 1, now(), now()
+		)
+		RETURNING id, subject_id, question_type, difficulty, metadata, created_at, updated_at
+	`, in.SubjectID, in.QuestionType, stem, nullableDifficulty(in.Difficulty), []byte(metaRaw))
+
+	var out QuestionBlueprint
+	var difficulty sql.NullInt64
+	if err := row.Scan(
+		&out.ID,
+		&out.SubjectID,
+		&out.QuestionType,
+		&difficulty,
+		&out.Metadata,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("insert question: %w", err)
+	}
+	if difficulty.Valid {
+		d := int(difficulty.Int64)
+		out.Difficulty = &d
+	}
+	out.EducationLevel = subject.educationLevel
+	out.SubjectType = subject.subjectType
+	out.SubjectName = subject.name
+	populateBlueprintMetadata(&out, out.Metadata)
+	return &out, nil
+}
+
+func (s *Service) ListQuestions(ctx context.Context, subjectID int64) ([]QuestionBlueprint, error) {
+	query := `
+		SELECT q.id, q.subject_id, s.education_level, s.subject_type, s.name,
+			q.question_type, q.difficulty, q.metadata, q.created_at, q.updated_at
+		FROM questions q
+		JOIN subjects s ON s.id = q.subject_id
+		WHERE q.is_active = TRUE
+	`
+	args := make([]any, 0, 1)
+	if subjectID > 0 {
+		query += ` AND q.subject_id = $1`
+		args = append(args, subjectID)
+	}
+	query += ` ORDER BY q.id DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query questions: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]QuestionBlueprint, 0)
+	for rows.Next() {
+		var out QuestionBlueprint
+		var difficulty sql.NullInt64
+		if err := rows.Scan(
+			&out.ID,
+			&out.SubjectID,
+			&out.EducationLevel,
+			&out.SubjectType,
+			&out.SubjectName,
+			&out.QuestionType,
+			&difficulty,
+			&out.Metadata,
+			&out.CreatedAt,
+			&out.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan question: %w", err)
+		}
+		if difficulty.Valid {
+			d := int(difficulty.Int64)
+			out.Difficulty = &d
+		}
+		populateBlueprintMetadata(&out, out.Metadata)
+		items = append(items, out)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate questions: %w", err)
+	}
+	return items, nil
 }
 
 func (s *Service) CreateStimulus(ctx context.Context, in CreateStimulusInput) (*Stimulus, error) {
@@ -250,6 +468,87 @@ func (s *Service) ListStimuliBySubject(ctx context.Context, subjectID int64) ([]
 	return items, nil
 }
 
+func (s *Service) UpdateStimulus(ctx context.Context, in UpdateStimulusInput) (*Stimulus, error) {
+	in.Title = strings.TrimSpace(in.Title)
+	in.StimulusType = strings.ToLower(strings.TrimSpace(in.StimulusType))
+	if in.ID <= 0 || in.SubjectID <= 0 || in.Title == "" || in.StimulusType == "" {
+		return nil, ErrInvalidInput
+	}
+	if in.StimulusType != "single" && in.StimulusType != "multiteks" {
+		return nil, fmt.Errorf("%w: stimulus_type must be single or multiteks", ErrInvalidInput)
+	}
+	if len(in.Content) == 0 {
+		in.Content = json.RawMessage(`{}`)
+	}
+	if err := validateStimulusContent(in.StimulusType, in.Content); err != nil {
+		return nil, err
+	}
+
+	var subjectExists bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(SELECT 1 FROM subjects WHERE id = $1 AND is_active = TRUE)
+	`, in.SubjectID).Scan(&subjectExists); err != nil {
+		return nil, fmt.Errorf("check subject: %w", err)
+	}
+	if !subjectExists {
+		return nil, ErrSubjectNotFound
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE stimuli
+		SET subject_id = $2,
+			title = $3,
+			stimulus_type = $4,
+			content = $5::jsonb,
+			updated_at = now()
+		WHERE id = $1 AND is_active = TRUE
+		RETURNING id, subject_id, title, stimulus_type, content, is_active, created_by, created_at, updated_at
+	`, in.ID, in.SubjectID, in.Title, in.StimulusType, []byte(in.Content))
+
+	var out Stimulus
+	var createdBy sql.NullInt64
+	if err := row.Scan(
+		&out.ID,
+		&out.SubjectID,
+		&out.Title,
+		&out.StimulusType,
+		&out.Content,
+		&out.IsActive,
+		&createdBy,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrStimulusNotFound
+		}
+		return nil, fmt.Errorf("update stimulus: %w", err)
+	}
+	if createdBy.Valid {
+		out.CreatedBy = &createdBy.Int64
+	}
+	return &out, nil
+}
+
+func (s *Service) DeleteStimulus(ctx context.Context, stimulusID int64) error {
+	if stimulusID <= 0 {
+		return ErrInvalidInput
+	}
+	var deletedID int64
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE stimuli
+		SET is_active = FALSE,
+			updated_at = now()
+		WHERE id = $1 AND is_active = TRUE
+		RETURNING id
+	`, stimulusID).Scan(&deletedID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrStimulusNotFound
+		}
+		return fmt.Errorf("delete stimulus: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) CreateQuestionVersion(ctx context.Context, in CreateQuestionVersionInput) (*QuestionVersion, error) {
 	if in.QuestionID <= 0 {
 		return nil, ErrInvalidInput
@@ -329,6 +628,10 @@ func (s *Service) CreateQuestionVersion(ctx context.Context, in CreateQuestionVe
 	if err := validateAnswerKey(questionType, base.AnswerKey); err != nil {
 		return nil, err
 	}
+	normalizedOptions, correctOptionKeys, err := normalizeAndValidateOptions(questionType, in.Options, base.AnswerKey)
+	if err != nil {
+		return nil, err
+	}
 
 	row := tx.QueryRowContext(ctx, `
 		INSERT INTO question_versions (
@@ -351,6 +654,20 @@ func (s *Service) CreateQuestionVersion(ctx context.Context, in CreateQuestionVe
 
 	if _, err := tx.ExecContext(ctx, `UPDATE questions SET version = $2, updated_at = now() WHERE id = $1`, in.QuestionID, nextVersion); err != nil {
 		return nil, fmt.Errorf("update question current version: %w", err)
+	}
+	if len(normalizedOptions) > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM question_options WHERE question_id = $1`, in.QuestionID); err != nil {
+			return nil, fmt.Errorf("clear question options: %w", err)
+		}
+		for _, opt := range normalizedOptions {
+			isCorrect := correctOptionKeys[opt.OptionKey]
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO question_options (question_id, option_key, option_html, is_correct)
+				VALUES ($1, $2, $3, $4)
+			`, in.QuestionID, opt.OptionKey, opt.OptionHTML, isCorrect); err != nil {
+				return nil, fmt.Errorf("insert question option: %w", err)
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1112,6 +1429,83 @@ func validateAnswerKey(questionType string, raw json.RawMessage) error {
 	}
 
 	return nil
+}
+
+func parseCorrectKeysForOptions(questionType string, raw json.RawMessage) (map[string]bool, error) {
+	keys := map[string]bool{}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("%w: answer_key must be object", ErrInvalidInput)
+	}
+	switch strings.TrimSpace(strings.ToLower(questionType)) {
+	case "pg_tunggal":
+		v, _ := obj["correct"].(string)
+		v = strings.TrimSpace(strings.ToUpper(v))
+		if v == "" {
+			return nil, fmt.Errorf("%w: pg_tunggal answer_key.correct (string) is required", ErrInvalidInput)
+		}
+		keys[v] = true
+	case "multi_jawaban":
+		rawKeys, _ := obj["correct"].([]any)
+		if len(rawKeys) == 0 {
+			return nil, fmt.Errorf("%w: multi_jawaban answer_key.correct (non-empty array) is required", ErrInvalidInput)
+		}
+		for i, item := range rawKeys {
+			v, _ := item.(string)
+			v = strings.TrimSpace(strings.ToUpper(v))
+			if v == "" {
+				return nil, fmt.Errorf("%w: multi_jawaban answer_key.correct[%d] must be non-empty string", ErrInvalidInput, i)
+			}
+			keys[v] = true
+		}
+	}
+	return keys, nil
+}
+
+func normalizeAndValidateOptions(questionType string, options []QuestionOptionInput, answerKey json.RawMessage) ([]QuestionOptionInput, map[string]bool, error) {
+	qType := strings.TrimSpace(strings.ToLower(questionType))
+	if qType == "benar_salah_pernyataan" {
+		return nil, nil, nil
+	}
+	if len(options) == 0 {
+		return nil, nil, nil
+	}
+
+	correctKeys, err := parseCorrectKeysForOptions(qType, answerKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(options) < 2 {
+		return nil, nil, fmt.Errorf("%w: options must contain at least 2 rows", ErrInvalidInput)
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]QuestionOptionInput, 0, len(options))
+	for i, it := range options {
+		key := strings.TrimSpace(strings.ToUpper(it.OptionKey))
+		html := strings.TrimSpace(it.OptionHTML)
+		if key == "" {
+			return nil, nil, fmt.Errorf("%w: options[%d].option_key is required", ErrInvalidInput, i)
+		}
+		if html == "" {
+			return nil, nil, fmt.Errorf("%w: options[%d].option_html is required", ErrInvalidInput, i)
+		}
+		if _, ok := seen[key]; ok {
+			return nil, nil, fmt.Errorf("%w: duplicate option_key '%s'", ErrInvalidInput, key)
+		}
+		seen[key] = struct{}{}
+		out = append(out, QuestionOptionInput{
+			OptionKey:  key,
+			OptionHTML: html,
+		})
+	}
+
+	for key := range correctKeys {
+		if _, ok := seen[key]; !ok {
+			return nil, nil, fmt.Errorf("%w: answer_key references unknown option '%s'", ErrInvalidInput, key)
+		}
+	}
+	return out, correctKeys, nil
 }
 
 func scanQuestionVersion(scanner interface{ Scan(dest ...any) error }) (*QuestionVersion, error) {

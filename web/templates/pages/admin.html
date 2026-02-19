@@ -1,35 +1,23 @@
 {{define "admin_content"}}
 <section class="card">
-    <section class="panel admin-overview">
-        <h2>Dasbor Admin</h2>
-        <div class="admin-stats-grid mt">
-            <article class="admin-stat-card stat-admin">
-                <div class="stat-label">Admin</div>
-                <div id="admin-stat-admin" class="stat-value">0</div>
-            </article>
-            <article class="admin-stat-card stat-proktor">
-                <div class="stat-label">Proktor</div>
-                <div id="admin-stat-proktor" class="stat-value">0</div>
-            </article>
-            <article class="admin-stat-card stat-guru">
-                <div class="stat-label">Guru</div>
-                <div id="admin-stat-guru" class="stat-value">0</div>
-            </article>
-            <article class="admin-stat-card stat-siswa">
-                <div class="stat-label">Siswa</div>
-                <div id="admin-stat-siswa" class="stat-value">0</div>
-            </article>
-            <article class="admin-stat-card stat-sekolah">
-                <div class="stat-label">Sekolah</div>
-                <div id="admin-stat-sekolah" class="stat-value">0</div>
-            </article>
-        </div>
-    </section>
-
-    <div class="admin-layout mt">
+    <div class="admin-layout">
         <aside class="admin-sidebar panel">
             <h3>Menu Admin</h3>
             <div class="admin-menu-list">
+                <button
+                    class="btn btn-secondary admin-menu-btn active"
+                    type="button"
+                    data-admin-menu="dashboard"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M4 13h7V4H4zM13 20h7v-7h-7zM13 4h7v7h-7zM4 20h7v-5H4z"
+                            />
+                        </svg>
+                    </span>
+                    Dashboard
+                </button>
                 <button
                     class="btn btn-secondary admin-menu-btn"
                     type="button"
@@ -64,14 +52,61 @@
         </aside>
 
         <div class="admin-content">
-            <section id="admin-users-panel" class="panel">
-                <h3>Daftar Pengguna</h3>
+            <section
+                id="admin-dashboard-panel"
+                class="panel admin-overview dashboard-hero"
+            >
+                <div class="dashboard-hero-head">
+                    <h2>Dasbor Admin</h2>
+                    <div class="dashboard-quick-actions">
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-admin-jump="users"
+                        >
+                            Kelola Pengguna
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-admin-jump="master"
+                        >
+                            Kelola Data Master
+                        </button>
+                    </div>
+                </div>
                 <div
                     id="admin-message"
-                    class="box mt"
+                    class="box mt dashboard-hero-message"
                     role="status"
                     aria-live="polite"
                 ></div>
+                <div class="admin-stats-grid mt">
+                    <article class="admin-stat-card stat-admin">
+                        <div class="stat-label">Admin</div>
+                        <div id="admin-stat-admin" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-proktor">
+                        <div class="stat-label">Proktor</div>
+                        <div id="admin-stat-proktor" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-guru">
+                        <div class="stat-label">Guru</div>
+                        <div id="admin-stat-guru" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-siswa">
+                        <div class="stat-label">Siswa</div>
+                        <div id="admin-stat-siswa" class="stat-value">0</div>
+                    </article>
+                    <article class="admin-stat-card stat-sekolah">
+                        <div class="stat-label">Sekolah</div>
+                        <div id="admin-stat-sekolah" class="stat-value">0</div>
+                    </article>
+                </div>
+            </section>
+
+            <section id="admin-users-panel" class="panel" hidden>
+                <h3>Daftar Pengguna</h3>
                 <form id="admin-registration-filter-form" class="form-grid">
                     <label
                         >Peran
@@ -465,8 +500,12 @@
         <form id="admin-user-import-form" class="form-grid" method="dialog">
             <h3>Impor Pengguna Excel</h3>
             <p class="muted">
-                Gunakan kolom: username, full_name, role, email, password,
-                is_active.
+                Gunakan kolom:
+                <code
+                    >username, full_name, role, email, password, school_name,
+                    class_name, grade_level, is_active</code
+                >. Untuk role <code>siswa</code>,
+                <code>school_name/class_name/grade_level</code> wajib diisi.
             </p>
             <label
                 >File Excel
@@ -477,6 +516,13 @@
                     required
             /></label>
             <pre id="admin-user-import-output" class="box code-box"></pre>
+            <button
+                id="admin-user-import-template-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Unduh Template Import
+            </button>
             <div class="actions">
                 <button
                     id="admin-user-import-cancel-btn"

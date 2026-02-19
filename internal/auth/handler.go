@@ -82,6 +82,11 @@ type adminUpdateUserRequest struct {
 	ClassID  *int64 `json:"class_id"`
 }
 
+type userClassPlacementRequest struct {
+	SchoolID *int64 `json:"school_id"`
+	ClassID  *int64 `json:"class_id"`
+}
+
 type bootstrapInitRequest struct {
 	Token           string `json:"token"`
 	AdminUsername   string `json:"admin_username"`
@@ -447,6 +452,42 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "deactivated"}})
 }
 
+func (h *Handler) AssignUserClass(w http.ResponseWriter, r *http.Request) {
+	admin, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid user id"})
+		return
+	}
+
+	var req userClassPlacementRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	out, err := h.svc.AssignUserClassByAdminOrProktor(r.Context(), admin.ID, UserClassPlacementInput{
+		UserID:   userID,
+		SchoolID: req.SchoolID,
+		ClassID:  req.ClassID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUserNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: out})
+}
+
 func (h *Handler) ExportUsersExcel(w http.ResponseWriter, r *http.Request) {
 	role := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("role")))
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -462,6 +503,21 @@ func (h *Handler) ExportUsersExcel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := fmt.Sprintf("daftar_pengguna_%s.xlsx", time.Now().Format("20060102_150405"))
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
+func (h *Handler) ExportUsersImportTemplateExcel(w http.ResponseWriter, r *http.Request) {
+	content, err := h.svc.ExportUserImportTemplateExcel()
+	if err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		return
+	}
+
+	filename := fmt.Sprintf("template_import_pengguna_%s.xlsx", time.Now().Format("20060102_150405"))
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Cache-Control", "no-store")

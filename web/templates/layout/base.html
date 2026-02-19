@@ -11,10 +11,6 @@
         <header class="topbar">
             <h1><a href="/" class="brand">CBT LMS</a></h1>
             <nav class="topnav">
-                <a href="/simulasi">Login</a>
-                <a href="/simulasi">Simulasi</a>
-                <a href="/authoring">Authoring</a>
-                <a href="/admin">Admin</a>
                 <span id="nav-user" class="nav-user"></span>
                 <button
                     id="nav-logout"
@@ -31,7 +27,9 @@
             if eq .Page "login_content"}} {{template "login_content" .}} {{else
             if eq .Page "simulasi_content"}} {{template "simulasi_content" .}}
             {{else if eq .Page "authoring_content"}} {{template
-            "authoring_content" .}} {{else if eq .Page "admin_content"}}
+            "authoring_content" .}} {{else if eq .Page "proktor_content"}}
+            {{template "proktor_content" .}} {{else if eq .Page "guru_content"}}
+            {{template "guru_content" .}} {{else if eq .Page "admin_content"}}
             {{template "admin_content" .}} {{else if eq .Page
             "attempt_content"}} {{template "attempt_content" .}} {{else if eq
             .Page "result_content"}} {{template "result_content" .}} {{end}}

@@ -2,7 +2,11 @@ package exam
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +18,7 @@ import (
 var (
 	ErrInvalidInput       = errors.New("invalid input")
 	ErrExamNotFound       = errors.New("exam not found")
+	ErrSubjectNotFound    = errors.New("subject not found")
 	ErrAttemptNotFound    = errors.New("attempt not found")
 	ErrAttemptNotEditable = errors.New("attempt is not editable")
 	ErrQuestionNotInExam  = errors.New("question not in exam")
@@ -21,6 +26,12 @@ var (
 	ErrAttemptNotFinal    = errors.New("attempt not final")
 	ErrResultPolicyDenied = errors.New("result not available by review policy")
 	ErrInvalidEventType   = errors.New("invalid event type")
+	ErrExamTokenRequired  = errors.New("token ujian wajib diisi")
+	ErrExamTokenInvalid   = errors.New("token ujian tidak valid")
+	ErrExamTokenExpired   = errors.New("token ujian sudah kedaluwarsa")
+	ErrExamNotAssigned    = errors.New("peserta tidak terdaftar pada ujian ini")
+	ErrExamCodeExists     = errors.New("kode ujian sudah digunakan")
+	ErrAssignmentFeature  = errors.New("fitur enroll ujian belum aktif di database")
 )
 
 type Service struct {
@@ -74,6 +85,19 @@ type SubjectOption struct {
 	Name           string `json:"name"`
 }
 
+type CreateSubjectInput struct {
+	EducationLevel string
+	SubjectType    string
+	Name           string
+}
+
+type UpdateSubjectInput struct {
+	ID             int64
+	EducationLevel string
+	SubjectType    string
+	Name           string
+}
+
 type ExamOption struct {
 	ID           int64      `json:"id"`
 	Code         string     `json:"code"`
@@ -81,6 +105,115 @@ type ExamOption struct {
 	SubjectID    int64      `json:"subject_id"`
 	EndAt        *time.Time `json:"end_at,omitempty"`
 	ReviewPolicy string     `json:"review_policy"`
+}
+
+type ExamAdminRecord struct {
+	ID              int64      `json:"id"`
+	Code            string     `json:"code"`
+	Title           string     `json:"title"`
+	SubjectID       int64      `json:"subject_id"`
+	SubjectName     string     `json:"subject_name"`
+	EducationLevel  string     `json:"education_level"`
+	SubjectType     string     `json:"subject_type"`
+	DurationMinutes int        `json:"duration_minutes"`
+	StartAt         *time.Time `json:"start_at,omitempty"`
+	EndAt           *time.Time `json:"end_at,omitempty"`
+	ReviewPolicy    string     `json:"review_policy"`
+	IsActive        bool       `json:"is_active"`
+	CreatedBy       *int64     `json:"created_by,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	QuestionCount   int        `json:"question_count"`
+	AssignedCount   int        `json:"assigned_count"`
+}
+
+type CreateExamInput struct {
+	Code            string
+	Title           string
+	SubjectID       int64
+	DurationMinutes int
+	StartAt         *time.Time
+	EndAt           *time.Time
+	ReviewPolicy    string
+	CreatedBy       int64
+}
+
+type UpdateExamInput struct {
+	ID              int64
+	Code            string
+	Title           string
+	SubjectID       int64
+	DurationMinutes int
+	StartAt         *time.Time
+	EndAt           *time.Time
+	ReviewPolicy    string
+	IsActive        bool
+}
+
+type ExamTokenExam struct {
+	ID             int64      `json:"id"`
+	Code           string     `json:"code"`
+	Title          string     `json:"title"`
+	SubjectID      int64      `json:"subject_id"`
+	SubjectName    string     `json:"subject_name"`
+	EducationLevel string     `json:"education_level"`
+	SubjectType    string     `json:"subject_type"`
+	EndAt          *time.Time `json:"end_at,omitempty"`
+}
+
+type ExamAccessToken struct {
+	ExamID      int64     `json:"exam_id"`
+	Token       string    `json:"token"`
+	TTLMinutes  int       `json:"ttl_minutes"`
+	GeneratedAt time.Time `json:"generated_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	GeneratedBy int64     `json:"generated_by"`
+}
+
+type ExamAssignmentUser struct {
+	UserID      int64     `json:"user_id"`
+	Username    string    `json:"username"`
+	FullName    string    `json:"full_name"`
+	Role        string    `json:"role"`
+	SchoolName  *string   `json:"school_name,omitempty"`
+	ClassName   *string   `json:"class_name,omitempty"`
+	Status      string    `json:"status"`
+	AssignedAt  time.Time `json:"assigned_at"`
+	AssignedBy  *int64    `json:"assigned_by,omitempty"`
+	AssignedByN *string   `json:"assigned_by_name,omitempty"`
+}
+
+type ReplaceExamAssignmentsInput struct {
+	ExamID      int64
+	UserIDs     []int64
+	AssignedBy  int64
+	AllowedRole string
+}
+
+type ReplaceExamAssignmentsByClassInput struct {
+	ExamID     int64
+	SchoolID   int64
+	ClassID    int64
+	AssignedBy int64
+}
+
+type ExamQuestionManageItem struct {
+	ExamID        int64   `json:"exam_id"`
+	QuestionID    int64   `json:"question_id"`
+	SeqNo         int     `json:"seq_no"`
+	Weight        float64 `json:"weight"`
+	QuestionType  string  `json:"question_type"`
+	StemPreview   string  `json:"stem_preview"`
+	SubjectID     int64   `json:"subject_id"`
+	SubjectName   string  `json:"subject_name"`
+	VersionNo     *int    `json:"version_no,omitempty"`
+	VersionStatus *string `json:"version_status,omitempty"`
+}
+
+type UpsertExamQuestionInput struct {
+	ExamID     int64
+	QuestionID int64
+	SeqNo      int
+	Weight     float64
 }
 
 type AttemptResultItem struct {
@@ -160,7 +293,7 @@ func NewService(db *sql.DB, defaultExamMinutes int) *Service {
 	return &Service{db: db, defaultExamMinutes: defaultExamMinutes}
 }
 
-func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64) (*Attempt, error) {
+func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, exam_id, student_id, status, started_at, expires_at
 		FROM attempts
@@ -175,15 +308,59 @@ func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64) (*A
 	}
 
 	duration := s.defaultExamMinutes
+	var examTokenHash sql.NullString
+	var examTokenExpires sql.NullTime
 	if err := s.db.QueryRowContext(ctx, `
-		SELECT duration_minutes
+		SELECT duration_minutes, exam_token_hash, exam_token_expires_at
 		FROM exams
 		WHERE id = $1 AND is_active = TRUE
-	`, examID).Scan(&duration); err != nil {
+	`, examID).Scan(&duration, &examTokenHash, &examTokenExpires); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrExamNotFound
 		}
 		return nil, fmt.Errorf("query exam duration: %w", err)
+	}
+	var assignmentCount int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM exam_assignments
+		WHERE exam_id = $1
+		  AND status = 'active'
+	`, examID).Scan(&assignmentCount); err != nil {
+		if !isUndefinedTableErr(err, "exam_assignments") {
+			return nil, fmt.Errorf("query assignment count: %w", err)
+		}
+		assignmentCount = 0
+	}
+	if assignmentCount > 0 {
+		var assigned bool
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT EXISTS(
+				SELECT 1
+				FROM exam_assignments
+				WHERE exam_id = $1
+				  AND user_id = $2
+				  AND status = 'active'
+			)
+		`, examID, studentID).Scan(&assigned); err != nil {
+			return nil, fmt.Errorf("check assignment: %w", err)
+		}
+		if !assigned {
+			return nil, ErrExamNotAssigned
+		}
+	}
+	if examTokenHash.Valid && strings.TrimSpace(examTokenHash.String) != "" {
+		now := time.Now()
+		if !examTokenExpires.Valid || now.After(examTokenExpires.Time) {
+			return nil, ErrExamTokenExpired
+		}
+		inputToken := normalizeExamToken(examToken)
+		if inputToken == "" {
+			return nil, ErrExamTokenRequired
+		}
+		if subtle.ConstantTimeCompare([]byte(hashExamToken(inputToken)), []byte(examTokenHash.String)) != 1 {
+			return nil, ErrExamTokenInvalid
+		}
 	}
 
 	row = s.db.QueryRowContext(ctx, `
@@ -209,6 +386,808 @@ func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64) (*A
 	}
 
 	return &created, nil
+}
+
+func (s *Service) ListExamsForToken(ctx context.Context) ([]ExamTokenExam, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			e.id,
+			e.code,
+			e.title,
+			e.subject_id,
+			s.name AS subject_name,
+			s.education_level,
+			s.subject_type,
+			e.end_at
+		FROM exams e
+		JOIN subjects s ON s.id = e.subject_id
+		WHERE e.is_active = TRUE
+		ORDER BY e.created_at DESC, e.id DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query exams for token: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ExamTokenExam, 0)
+	for rows.Next() {
+		var it ExamTokenExam
+		var endAt sql.NullTime
+		if err := rows.Scan(
+			&it.ID,
+			&it.Code,
+			&it.Title,
+			&it.SubjectID,
+			&it.SubjectName,
+			&it.EducationLevel,
+			&it.SubjectType,
+			&endAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan exams for token: %w", err)
+		}
+		if endAt.Valid {
+			it.EndAt = &endAt.Time
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exams for token: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) GenerateExamToken(ctx context.Context, examID, generatedBy int64, ttlMinutes int) (*ExamAccessToken, error) {
+	if examID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if generatedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if ttlMinutes <= 0 {
+		ttlMinutes = 120
+	}
+	if ttlMinutes > 1440 {
+		ttlMinutes = 1440
+	}
+
+	token, err := randomExamToken(6)
+	if err != nil {
+		return nil, fmt.Errorf("generate exam token: %w", err)
+	}
+	tokenHash := hashExamToken(token)
+
+	var generatedAt time.Time
+	var expiresAt time.Time
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE exams
+		SET exam_token_hash = $2,
+			exam_token_expires_at = now() + make_interval(mins => $3),
+			exam_token_generated_at = now(),
+			exam_token_generated_by = $4
+		WHERE id = $1
+		  AND is_active = TRUE
+		RETURNING exam_token_generated_at, exam_token_expires_at
+	`, examID, tokenHash, ttlMinutes, generatedBy).Scan(&generatedAt, &expiresAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrExamNotFound
+		}
+		return nil, fmt.Errorf("update exam token: %w", err)
+	}
+
+	return &ExamAccessToken{
+		ExamID:      examID,
+		Token:       token,
+		TTLMinutes:  ttlMinutes,
+		GeneratedAt: generatedAt,
+		ExpiresAt:   expiresAt,
+		GeneratedBy: generatedBy,
+	}, nil
+}
+
+func (s *Service) ListAdminExams(ctx context.Context, includeInactive bool) ([]ExamAdminRecord, error) {
+	query := `
+		SELECT
+			e.id,
+			e.code,
+			e.title,
+			e.subject_id,
+			s.name AS subject_name,
+			s.education_level,
+			s.subject_type,
+			e.duration_minutes,
+			e.start_at,
+			e.end_at,
+			e.review_policy,
+			e.is_active,
+			e.created_by,
+			e.created_at,
+			COALESCE(eq.question_count, 0) AS question_count,
+			COALESCE(ea.assigned_count, 0) AS assigned_count
+		FROM exams e
+		JOIN subjects s ON s.id = e.subject_id
+		LEFT JOIN (
+			SELECT exam_id, COUNT(*)::int AS question_count
+			FROM exam_questions
+			GROUP BY exam_id
+		) eq ON eq.exam_id = e.id
+			LEFT JOIN (
+				SELECT exam_id, COUNT(*)::int AS assigned_count
+				FROM exam_assignments
+				WHERE status = 'active'
+				GROUP BY exam_id
+			) ea ON ea.exam_id = e.id
+	`
+	args := make([]any, 0, 1)
+	if !includeInactive {
+		query += " WHERE e.is_active = TRUE"
+	}
+	query += " ORDER BY e.created_at DESC, e.id DESC"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		if isUndefinedTableErr(err, "exam_assignments") {
+			query = `
+				SELECT
+					e.id,
+					e.code,
+					e.title,
+					e.subject_id,
+					s.name AS subject_name,
+					s.education_level,
+					s.subject_type,
+					e.duration_minutes,
+					e.start_at,
+					e.end_at,
+					e.review_policy,
+					e.is_active,
+					e.created_by,
+					e.created_at,
+					COALESCE(eq.question_count, 0) AS question_count,
+					0::int AS assigned_count
+				FROM exams e
+				JOIN subjects s ON s.id = e.subject_id
+				LEFT JOIN (
+					SELECT exam_id, COUNT(*)::int AS question_count
+					FROM exam_questions
+					GROUP BY exam_id
+				) eq ON eq.exam_id = e.id
+			`
+			if !includeInactive {
+				query += " WHERE e.is_active = TRUE"
+			}
+			query += " ORDER BY e.created_at DESC, e.id DESC"
+			rows, err = s.db.QueryContext(ctx, query)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list admin exams: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]ExamAdminRecord, 0)
+	for rows.Next() {
+		var it ExamAdminRecord
+		var startAt sql.NullTime
+		var endAt sql.NullTime
+		var createdBy sql.NullInt64
+		if err := rows.Scan(
+			&it.ID,
+			&it.Code,
+			&it.Title,
+			&it.SubjectID,
+			&it.SubjectName,
+			&it.EducationLevel,
+			&it.SubjectType,
+			&it.DurationMinutes,
+			&startAt,
+			&endAt,
+			&it.ReviewPolicy,
+			&it.IsActive,
+			&createdBy,
+			&it.CreatedAt,
+			&it.QuestionCount,
+			&it.AssignedCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan admin exam: %w", err)
+		}
+		if startAt.Valid {
+			it.StartAt = &startAt.Time
+		}
+		if endAt.Valid {
+			it.EndAt = &endAt.Time
+		}
+		if createdBy.Valid {
+			it.CreatedBy = &createdBy.Int64
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate admin exams: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) CreateExam(ctx context.Context, in CreateExamInput) (*ExamAdminRecord, error) {
+	in.Code = strings.ToUpper(strings.TrimSpace(in.Code))
+	in.Title = strings.TrimSpace(in.Title)
+	in.ReviewPolicy = normalizeReviewPolicy(in.ReviewPolicy)
+	if in.Title == "" || in.SubjectID <= 0 || in.CreatedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if in.DurationMinutes <= 0 {
+		in.DurationMinutes = s.defaultExamMinutes
+	}
+	insertOnce := func(code string) (int64, error) {
+		var outID int64
+		if err := s.db.QueryRowContext(ctx, `
+			INSERT INTO exams (
+				code, title, subject_id, duration_minutes,
+				start_at, end_at, review_policy, is_active, created_by, created_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,$8,now())
+			RETURNING id
+		`, code, in.Title, in.SubjectID, in.DurationMinutes, in.StartAt, in.EndAt, in.ReviewPolicy, in.CreatedBy).Scan(&outID); err != nil {
+			return 0, err
+		}
+		return outID, nil
+	}
+
+	if in.Code != "" {
+		outID, err := insertOnce(in.Code)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "exams_code_key") {
+				return nil, ErrExamCodeExists
+			}
+			return nil, fmt.Errorf("create exam: %w", err)
+		}
+		return s.GetExamAdminByID(ctx, outID)
+	}
+
+	for i := 0; i < 8; i++ {
+		token, err := randomExamToken(4)
+		if err != nil {
+			return nil, fmt.Errorf("generate exam code: %w", err)
+		}
+		autoCode := "EXAM-" + time.Now().Format("20060102") + "-" + token
+		outID, err := insertOnce(autoCode)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "exams_code_key") {
+				continue
+			}
+			return nil, fmt.Errorf("create exam: %w", err)
+		}
+		return s.GetExamAdminByID(ctx, outID)
+	}
+	return nil, fmt.Errorf("create exam: gagal generate kode ujian unik")
+}
+
+func (s *Service) UpdateExam(ctx context.Context, in UpdateExamInput) (*ExamAdminRecord, error) {
+	in.Code = strings.ToUpper(strings.TrimSpace(in.Code))
+	in.Title = strings.TrimSpace(in.Title)
+	in.ReviewPolicy = normalizeReviewPolicy(in.ReviewPolicy)
+	if in.ID <= 0 || in.Code == "" || in.Title == "" || in.SubjectID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if in.DurationMinutes <= 0 {
+		in.DurationMinutes = s.defaultExamMinutes
+	}
+	var outID int64
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE exams
+		SET code = $2,
+			title = $3,
+			subject_id = $4,
+			duration_minutes = $5,
+			start_at = $6,
+			end_at = $7,
+			review_policy = $8,
+			is_active = $9
+		WHERE id = $1
+		RETURNING id
+	`, in.ID, in.Code, in.Title, in.SubjectID, in.DurationMinutes, in.StartAt, in.EndAt, in.ReviewPolicy, in.IsActive).Scan(&outID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrExamNotFound
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "exams_code_key") {
+			return nil, ErrExamCodeExists
+		}
+		return nil, fmt.Errorf("update exam: %w", err)
+	}
+	return s.GetExamAdminByID(ctx, outID)
+}
+
+func (s *Service) DeleteExam(ctx context.Context, examID int64) error {
+	if examID <= 0 {
+		return ErrInvalidInput
+	}
+	var outID int64
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE exams
+		SET is_active = FALSE
+		WHERE id = $1
+		RETURNING id
+	`, examID).Scan(&outID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrExamNotFound
+		}
+		return fmt.Errorf("delete exam: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) GetExamAdminByID(ctx context.Context, examID int64) (*ExamAdminRecord, error) {
+	if examID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			e.id,
+			e.code,
+			e.title,
+			e.subject_id,
+			s.name AS subject_name,
+			s.education_level,
+			s.subject_type,
+			e.duration_minutes,
+			e.start_at,
+			e.end_at,
+			e.review_policy,
+			e.is_active,
+			e.created_by,
+			e.created_at,
+			COALESCE(eq.question_count, 0) AS question_count,
+			COALESCE(ea.assigned_count, 0) AS assigned_count
+		FROM exams e
+		JOIN subjects s ON s.id = e.subject_id
+		LEFT JOIN (
+			SELECT exam_id, COUNT(*)::int AS question_count
+			FROM exam_questions
+			GROUP BY exam_id
+		) eq ON eq.exam_id = e.id
+			LEFT JOIN (
+				SELECT exam_id, COUNT(*)::int AS assigned_count
+				FROM exam_assignments
+				WHERE status = 'active'
+				GROUP BY exam_id
+			) ea ON ea.exam_id = e.id
+			WHERE e.id = $1
+	`, examID)
+	if err != nil {
+		if isUndefinedTableErr(err, "exam_assignments") {
+			rows, err = s.db.QueryContext(ctx, `
+				SELECT
+					e.id,
+					e.code,
+					e.title,
+					e.subject_id,
+					s.name AS subject_name,
+					s.education_level,
+					s.subject_type,
+					e.duration_minutes,
+					e.start_at,
+					e.end_at,
+					e.review_policy,
+					e.is_active,
+					e.created_by,
+					e.created_at,
+					COALESCE(eq.question_count, 0) AS question_count,
+					0::int AS assigned_count
+				FROM exams e
+				JOIN subjects s ON s.id = e.subject_id
+				LEFT JOIN (
+					SELECT exam_id, COUNT(*)::int AS question_count
+					FROM exam_questions
+					GROUP BY exam_id
+				) eq ON eq.exam_id = e.id
+				WHERE e.id = $1
+			`, examID)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get exam admin: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, ErrExamNotFound
+	}
+	var it ExamAdminRecord
+	var startAt sql.NullTime
+	var endAt sql.NullTime
+	var createdBy sql.NullInt64
+	if err := rows.Scan(
+		&it.ID,
+		&it.Code,
+		&it.Title,
+		&it.SubjectID,
+		&it.SubjectName,
+		&it.EducationLevel,
+		&it.SubjectType,
+		&it.DurationMinutes,
+		&startAt,
+		&endAt,
+		&it.ReviewPolicy,
+		&it.IsActive,
+		&createdBy,
+		&it.CreatedAt,
+		&it.QuestionCount,
+		&it.AssignedCount,
+	); err != nil {
+		return nil, fmt.Errorf("scan exam admin: %w", err)
+	}
+	if startAt.Valid {
+		it.StartAt = &startAt.Time
+	}
+	if endAt.Valid {
+		it.EndAt = &endAt.Time
+	}
+	if createdBy.Valid {
+		it.CreatedBy = &createdBy.Int64
+	}
+	return &it, nil
+}
+
+func (s *Service) ListExamAssignments(ctx context.Context, examID int64) ([]ExamAssignmentUser, error) {
+	if examID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			u.id,
+			u.username,
+			u.full_name,
+			u.role,
+			sch.name AS school_name,
+			cls.name AS class_name,
+			ea.status,
+			ea.assigned_at,
+			ea.assigned_by,
+			ab.full_name AS assigned_by_name
+		FROM exam_assignments ea
+		JOIN users u ON u.id = ea.user_id
+		LEFT JOIN enrollments en ON en.user_id = u.id AND en.status = 'active'
+		LEFT JOIN schools sch ON sch.id = en.school_id
+		LEFT JOIN classes cls ON cls.id = en.class_id
+		LEFT JOIN users ab ON ab.id = ea.assigned_by
+		WHERE ea.exam_id = $1
+		  AND ea.status = 'active'
+		ORDER BY u.role, u.full_name, u.username
+	`, examID)
+	if err != nil {
+		if isUndefinedTableErr(err, "exam_assignments") {
+			return nil, ErrAssignmentFeature
+		}
+		return nil, fmt.Errorf("list exam assignments: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ExamAssignmentUser, 0)
+	for rows.Next() {
+		var it ExamAssignmentUser
+		var schoolName sql.NullString
+		var className sql.NullString
+		var assignedBy sql.NullInt64
+		var assignedByName sql.NullString
+		if err := rows.Scan(
+			&it.UserID,
+			&it.Username,
+			&it.FullName,
+			&it.Role,
+			&schoolName,
+			&className,
+			&it.Status,
+			&it.AssignedAt,
+			&assignedBy,
+			&assignedByName,
+		); err != nil {
+			return nil, fmt.Errorf("scan exam assignment: %w", err)
+		}
+		if schoolName.Valid {
+			it.SchoolName = &schoolName.String
+		}
+		if className.Valid {
+			it.ClassName = &className.String
+		}
+		if assignedBy.Valid {
+			it.AssignedBy = &assignedBy.Int64
+		}
+		if assignedByName.Valid {
+			it.AssignedByN = &assignedByName.String
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exam assignments: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) ReplaceExamAssignments(ctx context.Context, in ReplaceExamAssignmentsInput) ([]ExamAssignmentUser, error) {
+	if in.ExamID <= 0 || in.AssignedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if _, err := s.GetExamAdminByID(ctx, in.ExamID); err != nil {
+		return nil, err
+	}
+
+	ids := make([]int64, 0, len(in.UserIDs))
+	seen := map[int64]struct{}{}
+	for _, id := range in.UserIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin assignment tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE exam_assignments
+		SET status = 'inactive',
+			updated_at = now()
+		WHERE exam_id = $1
+	`, in.ExamID); err != nil {
+		if isUndefinedTableErr(err, "exam_assignments") {
+			return nil, ErrAssignmentFeature
+		}
+		return nil, fmt.Errorf("deactivate old exam assignments: %w", err)
+	}
+
+	for _, userID := range ids {
+		var role string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT role
+			FROM users
+			WHERE id = $1
+			  AND is_active = TRUE
+		`, userID).Scan(&role); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return nil, fmt.Errorf("load assignment user role: %w", err)
+		}
+		if role != "guru" && role != "siswa" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO exam_assignments (
+				exam_id, user_id, status, assigned_by, assigned_at, created_at, updated_at
+			) VALUES ($1, $2, 'active', $3, now(), now(), now())
+			ON CONFLICT (exam_id, user_id)
+			DO UPDATE SET
+				status = 'active',
+				assigned_by = EXCLUDED.assigned_by,
+				assigned_at = now(),
+				updated_at = now()
+		`, in.ExamID, userID, in.AssignedBy); err != nil {
+			return nil, fmt.Errorf("upsert exam assignment: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit assignment tx: %w", err)
+	}
+	return s.ListExamAssignments(ctx, in.ExamID)
+}
+
+func (s *Service) ReplaceExamAssignmentsByClass(ctx context.Context, in ReplaceExamAssignmentsByClassInput) ([]ExamAssignmentUser, error) {
+	if in.ExamID <= 0 || in.SchoolID <= 0 || in.ClassID <= 0 || in.AssignedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if _, err := s.GetExamAdminByID(ctx, in.ExamID); err != nil {
+		return nil, err
+	}
+
+	var classValid bool
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM classes c
+			JOIN schools s ON s.id = c.school_id
+			WHERE c.id = $1
+			  AND c.school_id = $2
+			  AND c.is_active = TRUE
+			  AND s.is_active = TRUE
+		)
+	`, in.ClassID, in.SchoolID).Scan(&classValid); err != nil {
+		return nil, fmt.Errorf("validate class for exam assignment: %w", err)
+	}
+	if !classValid {
+		return nil, ErrInvalidInput
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT e.user_id
+		FROM enrollments e
+		JOIN users u ON u.id = e.user_id
+		WHERE e.school_id = $1
+		  AND e.class_id = $2
+		  AND e.status = 'active'
+		  AND u.is_active = TRUE
+		  AND u.role = 'siswa'
+		ORDER BY e.user_id
+	`, in.SchoolID, in.ClassID)
+	if err != nil {
+		return nil, fmt.Errorf("list class users for exam assignment: %w", err)
+	}
+	defer rows.Close()
+
+	userIDs := make([]int64, 0)
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan class user for exam assignment: %w", err)
+		}
+		userIDs = append(userIDs, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate class users for exam assignment: %w", err)
+	}
+
+	return s.ReplaceExamAssignments(ctx, ReplaceExamAssignmentsInput{
+		ExamID:     in.ExamID,
+		UserIDs:    userIDs,
+		AssignedBy: in.AssignedBy,
+	})
+}
+
+func (s *Service) ListExamQuestions(ctx context.Context, examID int64) ([]ExamQuestionManageItem, error) {
+	if examID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			eq.exam_id,
+			eq.question_id,
+			eq.seq_no,
+			eq.weight,
+			q.question_type,
+			LEFT(COALESCE(qv.stem_html, q.stem_html, ''), 200) AS stem_preview,
+			q.subject_id,
+			s.name AS subject_name,
+			qv.version_no,
+			qv.status
+		FROM exam_questions eq
+		JOIN questions q ON q.id = eq.question_id
+		JOIN subjects s ON s.id = q.subject_id
+		LEFT JOIN LATERAL (
+			SELECT version_no, stem_html, status
+			FROM question_versions
+			WHERE question_id = q.id
+			  AND is_active = TRUE
+			ORDER BY version_no DESC
+			LIMIT 1
+		) qv ON TRUE
+		WHERE eq.exam_id = $1
+		ORDER BY eq.seq_no ASC
+	`, examID)
+	if err != nil {
+		return nil, fmt.Errorf("list exam questions: %w", err)
+	}
+	defer rows.Close()
+	items := make([]ExamQuestionManageItem, 0)
+	for rows.Next() {
+		var it ExamQuestionManageItem
+		var versionNo sql.NullInt64
+		var versionStatus sql.NullString
+		if err := rows.Scan(
+			&it.ExamID,
+			&it.QuestionID,
+			&it.SeqNo,
+			&it.Weight,
+			&it.QuestionType,
+			&it.StemPreview,
+			&it.SubjectID,
+			&it.SubjectName,
+			&versionNo,
+			&versionStatus,
+		); err != nil {
+			return nil, fmt.Errorf("scan exam question: %w", err)
+		}
+		if versionNo.Valid {
+			v := int(versionNo.Int64)
+			it.VersionNo = &v
+		}
+		if versionStatus.Valid {
+			it.VersionStatus = &versionStatus.String
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exam questions: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Service) UpsertExamQuestion(ctx context.Context, in UpsertExamQuestionInput) (*ExamQuestionManageItem, error) {
+	if in.ExamID <= 0 || in.QuestionID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	if in.Weight <= 0 {
+		in.Weight = 1
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin upsert exam question tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var examExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM exams WHERE id = $1)`, in.ExamID).Scan(&examExists); err != nil {
+		return nil, fmt.Errorf("check exam exists: %w", err)
+	}
+	if !examExists {
+		return nil, ErrExamNotFound
+	}
+	var questionExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM questions WHERE id = $1)`, in.QuestionID).Scan(&questionExists); err != nil {
+		return nil, fmt.Errorf("check question exists: %w", err)
+	}
+	if !questionExists {
+		return nil, ErrQuestionNotInExam
+	}
+
+	seqNo := in.SeqNo
+	if seqNo <= 0 {
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(MAX(seq_no), 0) + 1
+			FROM exam_questions
+			WHERE exam_id = $1
+		`, in.ExamID).Scan(&seqNo); err != nil {
+			return nil, fmt.Errorf("next seq_no exam question: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO exam_questions (exam_id, question_id, seq_no, weight)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (exam_id, question_id)
+		DO UPDATE SET
+			seq_no = EXCLUDED.seq_no,
+			weight = EXCLUDED.weight
+	`, in.ExamID, in.QuestionID, seqNo, in.Weight); err != nil {
+		return nil, fmt.Errorf("upsert exam question: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit upsert exam question tx: %w", err)
+	}
+
+	items, err := s.ListExamQuestions(ctx, in.ExamID)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		if it.QuestionID == in.QuestionID {
+			cloned := it
+			return &cloned, nil
+		}
+	}
+	return nil, ErrQuestionNotInExam
+}
+
+func (s *Service) DeleteExamQuestion(ctx context.Context, examID, questionID int64) error {
+	if examID <= 0 || questionID <= 0 {
+		return ErrInvalidInput
+	}
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM exam_questions
+		WHERE exam_id = $1
+		  AND question_id = $2
+	`, examID, questionID)
+	if err != nil {
+		return fmt.Errorf("delete exam question: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrQuestionNotInExam
+	}
+	return nil
 }
 
 func (s *Service) GetAttemptSummary(ctx context.Context, attemptID int64) (*AttemptSummary, error) {
@@ -344,6 +1323,121 @@ func (s *Service) ListSubjects(ctx context.Context, level, subjectType string) (
 		return nil, fmt.Errorf("iterate subjects: %w", err)
 	}
 	return items, nil
+}
+
+func (s *Service) CreateSubject(ctx context.Context, in CreateSubjectInput) (*SubjectOption, error) {
+	level := strings.TrimSpace(in.EducationLevel)
+	subjectType := strings.TrimSpace(in.SubjectType)
+	name := strings.TrimSpace(in.Name)
+	if level == "" || subjectType == "" || name == "" {
+		return nil, ErrInvalidInput
+	}
+	var out SubjectOption
+	if err := s.db.QueryRowContext(ctx, `
+		INSERT INTO subjects (education_level, subject_type, name, is_active)
+		VALUES ($1, $2, $3, TRUE)
+		RETURNING id, education_level, subject_type, name
+	`, level, subjectType, name).Scan(&out.ID, &out.EducationLevel, &out.SubjectType, &out.Name); err != nil {
+		return nil, fmt.Errorf("insert subject: %w", err)
+	}
+	return &out, nil
+}
+
+func (s *Service) UpdateSubject(ctx context.Context, in UpdateSubjectInput) (*SubjectOption, error) {
+	if in.ID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	level := strings.TrimSpace(in.EducationLevel)
+	subjectType := strings.TrimSpace(in.SubjectType)
+	name := strings.TrimSpace(in.Name)
+	if level == "" || subjectType == "" || name == "" {
+		return nil, ErrInvalidInput
+	}
+	var out SubjectOption
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE subjects
+		SET education_level = $2,
+			subject_type = $3,
+			name = $4
+		WHERE id = $1
+		  AND is_active = TRUE
+		RETURNING id, education_level, subject_type, name
+	`, in.ID, level, subjectType, name).Scan(&out.ID, &out.EducationLevel, &out.SubjectType, &out.Name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrSubjectNotFound
+		}
+		return nil, fmt.Errorf("update subject: %w", err)
+	}
+	return &out, nil
+}
+
+func normalizeExamToken(token string) string {
+	return strings.ToUpper(strings.TrimSpace(token))
+}
+
+func normalizeReviewPolicy(input string) string {
+	v := strings.TrimSpace(strings.ToLower(input))
+	switch v {
+	case "after_submit", "immediate", "disabled", "after_exam_end":
+		return v
+	case "after_end":
+		return "after_exam_end"
+	default:
+		return "after_submit"
+	}
+}
+
+func hashExamToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func randomExamToken(length int) (string, error) {
+	if length <= 0 {
+		length = 6
+	}
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	buf := make([]byte, length)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	out := make([]byte, length)
+	for i := range buf {
+		out[i] = alphabet[int(buf[i])%len(alphabet)]
+	}
+	return string(out), nil
+}
+
+func isUndefinedTableErr(err error, table string) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	if table == "" {
+		return strings.Contains(lower, "does not exist") || strings.Contains(lower, "undefined_table")
+	}
+	return strings.Contains(lower, "relation \""+strings.ToLower(table)+"\" does not exist") ||
+		(strings.Contains(lower, "undefined_table") && strings.Contains(lower, strings.ToLower(table)))
+}
+
+func (s *Service) DeleteSubject(ctx context.Context, subjectID int64) error {
+	if subjectID <= 0 {
+		return ErrInvalidInput
+	}
+	var id int64
+	if err := s.db.QueryRowContext(ctx, `
+		UPDATE subjects
+		SET is_active = FALSE
+		WHERE id = $1
+		  AND is_active = TRUE
+		RETURNING id
+	`, subjectID).Scan(&id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSubjectNotFound
+		}
+		return fmt.Errorf("delete subject: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) ListExamsBySubject(ctx context.Context, subjectID int64) ([]ExamOption, error) {

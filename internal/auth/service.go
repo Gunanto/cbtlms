@@ -101,6 +101,7 @@ type AdminUserRecord struct {
 	SchoolID      *int64     `json:"school_id,omitempty"`
 	SchoolName    *string    `json:"school_name,omitempty"`
 	ClassID       *int64     `json:"class_id,omitempty"`
+	ClassGrade    *string    `json:"class_grade_level,omitempty"`
 	ClassName     *string    `json:"class_name,omitempty"`
 	IsActive      bool       `json:"is_active"`
 	AccountStatus string     `json:"account_status"`
@@ -131,6 +132,12 @@ type AdminUpdateUserInput struct {
 	Email    string
 	Role     string
 	Password string
+	SchoolID *int64
+	ClassID  *int64
+}
+
+type UserClassPlacementInput struct {
+	UserID   int64
 	SchoolID *int64
 	ClassID  *int64
 }
@@ -868,6 +875,7 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 			sch.school_id,
 			sch.name AS school_name,
 			sch.class_id,
+			sch.grade_level,
 			sch.class_name,
 			u.is_active,
 			u.account_status,
@@ -879,6 +887,7 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 				s.name,
 				e.school_id,
 				e.class_id,
+				c.grade_level,
 				c.name AS class_name
 			FROM enrollments e
 			JOIN schools s ON s.id = e.school_id
@@ -911,9 +920,10 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 		var schoolID sql.NullInt64
 		var schoolName sql.NullString
 		var classID sql.NullInt64
+		var classGrade sql.NullString
 		var className sql.NullString
 		var approvedAt sql.NullTime
-		if err := rows.Scan(&it.ID, &it.Username, &email, &it.FullName, &it.Role, &schoolID, &schoolName, &classID, &className, &it.IsActive, &it.AccountStatus, &approvedAt, &it.CreatedAt); err != nil {
+		if err := rows.Scan(&it.ID, &it.Username, &email, &it.FullName, &it.Role, &schoolID, &schoolName, &classID, &classGrade, &className, &it.IsActive, &it.AccountStatus, &approvedAt, &it.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if email.Valid {
@@ -927,6 +937,9 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 		}
 		if classID.Valid {
 			it.ClassID = &classID.Int64
+		}
+		if classGrade.Valid {
+			it.ClassGrade = &classGrade.String
 		}
 		if className.Valid {
 			it.ClassName = &className.String
@@ -975,6 +988,11 @@ func (s *Service) CreateUserByAdmin(ctx context.Context, actorID int64, in Admin
 	if email != "" {
 		if _, err := mail.ParseAddress(email); err != nil {
 			return nil, errors.New("invalid email")
+		}
+	}
+	if role == "siswa" {
+		if in.SchoolID == nil || in.ClassID == nil || *in.SchoolID <= 0 || *in.ClassID <= 0 {
+			return nil, errors.New("untuk role siswa, sekolah dan kelas wajib diisi")
 		}
 	}
 
@@ -1045,6 +1063,11 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 			return nil, errors.New("invalid email")
 		}
 	}
+	if role == "siswa" {
+		if in.SchoolID == nil || in.ClassID == nil || *in.SchoolID <= 0 || *in.ClassID <= 0 {
+			return nil, errors.New("untuk role siswa, sekolah dan kelas wajib diisi")
+		}
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1107,6 +1130,121 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit update user: %w", err)
+	}
+	return &out, nil
+}
+
+func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID int64, in UserClassPlacementInput) (*AdminUserRecord, error) {
+	_ = actorID
+	if in.UserID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var role string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT role
+		FROM users
+		WHERE id = $1
+		  AND is_active = TRUE
+	`, in.UserID).Scan(&role); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("load target user: %w", err)
+	}
+	if role != "guru" && role != "siswa" {
+		return nil, errors.New("hanya pengguna role guru/siswa yang bisa ditempatkan ke kelas")
+	}
+
+	if err := upsertUserEnrollmentTx(ctx, tx, in.UserID, in.SchoolID, in.ClassID); err != nil {
+		return nil, err
+	}
+
+	var out AdminUserRecord
+	var email sql.NullString
+	var schoolID sql.NullInt64
+	var schoolName sql.NullString
+	var classID sql.NullInt64
+	var className sql.NullString
+	var approvedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		SELECT
+			u.id,
+			u.username,
+			u.email,
+			u.full_name,
+			u.role,
+			sch.school_id,
+			sch.name AS school_name,
+			sch.class_id,
+			sch.class_name,
+			u.is_active,
+			u.account_status,
+			u.approved_at,
+			u.created_at
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT
+				s.name,
+				e.school_id,
+				e.class_id,
+				c.name AS class_name
+			FROM enrollments e
+			JOIN schools s ON s.id = e.school_id
+			LEFT JOIN classes c ON c.id = e.class_id
+			WHERE e.user_id = u.id
+			ORDER BY e.enrolled_at DESC, e.id DESC
+			LIMIT 1
+		) sch ON TRUE
+		WHERE u.id = $1
+	`, in.UserID).Scan(
+		&out.ID,
+		&out.Username,
+		&email,
+		&out.FullName,
+		&out.Role,
+		&schoolID,
+		&schoolName,
+		&classID,
+		&className,
+		&out.IsActive,
+		&out.AccountStatus,
+		&approvedAt,
+		&out.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("reload user after placement: %w", err)
+	}
+	if email.Valid {
+		out.Email = &email.String
+	}
+	if schoolID.Valid {
+		out.SchoolID = &schoolID.Int64
+	}
+	if schoolName.Valid {
+		out.SchoolName = &schoolName.String
+	}
+	if classID.Valid {
+		out.ClassID = &classID.Int64
+	}
+	if className.Valid {
+		out.ClassName = &className.String
+	}
+	if approvedAt.Valid {
+		out.ApprovedAt = &approvedAt.Time
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit placement tx: %w", err)
 	}
 	return &out, nil
 }

@@ -16,24 +16,67 @@ import (
 )
 
 type mockExamService struct {
-	startAttemptFn       func(ctx context.Context, examID, studentID int64) (*Attempt, error)
-	listSubjectsFn       func(ctx context.Context, level, subjectType string) ([]SubjectOption, error)
-	listExamsFn          func(ctx context.Context, subjectID int64) ([]ExamOption, error)
-	getAttemptSummaryFn  func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
-	getAttemptQuestionFn func(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error)
-	getAttemptResultFn   func(ctx context.Context, attemptID int64) (*AttemptResult, error)
-	saveAnswerFn         func(ctx context.Context, input SaveAnswerInput) error
-	submitAttemptFn      func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
-	getAttemptOwnerFn    func(ctx context.Context, attemptID int64) (int64, error)
-	logAttemptEventFn    func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
-	listAttemptEventsFn  func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
+	startAttemptFn                  func(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error)
+	listAdminExamsFn                func(ctx context.Context, includeInactive bool) ([]ExamAdminRecord, error)
+	createExamFn                    func(ctx context.Context, in CreateExamInput) (*ExamAdminRecord, error)
+	updateExamFn                    func(ctx context.Context, in UpdateExamInput) (*ExamAdminRecord, error)
+	deleteExamFn                    func(ctx context.Context, examID int64) error
+	listSubjectsFn                  func(ctx context.Context, level, subjectType string) ([]SubjectOption, error)
+	createSubjectFn                 func(ctx context.Context, in CreateSubjectInput) (*SubjectOption, error)
+	updateSubjectFn                 func(ctx context.Context, in UpdateSubjectInput) (*SubjectOption, error)
+	deleteSubjectFn                 func(ctx context.Context, subjectID int64) error
+	listExamsFn                     func(ctx context.Context, subjectID int64) ([]ExamOption, error)
+	listExamsForTokenFn             func(ctx context.Context) ([]ExamTokenExam, error)
+	generateExamTokenFn             func(ctx context.Context, examID, generatedBy int64, ttlMinutes int) (*ExamAccessToken, error)
+	listExamAssignmentsFn           func(ctx context.Context, examID int64) ([]ExamAssignmentUser, error)
+	replaceExamAssignmentsFn        func(ctx context.Context, in ReplaceExamAssignmentsInput) ([]ExamAssignmentUser, error)
+	replaceExamAssignmentsByClassFn func(ctx context.Context, in ReplaceExamAssignmentsByClassInput) ([]ExamAssignmentUser, error)
+	listExamQuestionsFn             func(ctx context.Context, examID int64) ([]ExamQuestionManageItem, error)
+	upsertExamQuestionFn            func(ctx context.Context, in UpsertExamQuestionInput) (*ExamQuestionManageItem, error)
+	deleteExamQuestionFn            func(ctx context.Context, examID, questionID int64) error
+	getAttemptSummaryFn             func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
+	getAttemptQuestionFn            func(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error)
+	getAttemptResultFn              func(ctx context.Context, attemptID int64) (*AttemptResult, error)
+	saveAnswerFn                    func(ctx context.Context, input SaveAnswerInput) error
+	submitAttemptFn                 func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
+	getAttemptOwnerFn               func(ctx context.Context, attemptID int64) (int64, error)
+	logAttemptEventFn               func(ctx context.Context, input AttemptEventInput) (*AttemptEvent, error)
+	listAttemptEventsFn             func(ctx context.Context, attemptID int64, limit int) ([]AttemptEvent, error)
 }
 
-func (m *mockExamService) StartAttempt(ctx context.Context, examID, studentID int64) (*Attempt, error) {
+func (m *mockExamService) StartAttempt(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
 	if m.startAttemptFn == nil {
 		return nil, errors.New("not implemented")
 	}
-	return m.startAttemptFn(ctx, examID, studentID)
+	return m.startAttemptFn(ctx, examID, studentID, examToken)
+}
+
+func (m *mockExamService) ListAdminExams(ctx context.Context, includeInactive bool) ([]ExamAdminRecord, error) {
+	if m.listAdminExamsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listAdminExamsFn(ctx, includeInactive)
+}
+
+func (m *mockExamService) CreateExam(ctx context.Context, in CreateExamInput) (*ExamAdminRecord, error) {
+	if m.createExamFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.createExamFn(ctx, in)
+}
+
+func (m *mockExamService) UpdateExam(ctx context.Context, in UpdateExamInput) (*ExamAdminRecord, error) {
+	if m.updateExamFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.updateExamFn(ctx, in)
+}
+
+func (m *mockExamService) DeleteExam(ctx context.Context, examID int64) error {
+	if m.deleteExamFn == nil {
+		return errors.New("not implemented")
+	}
+	return m.deleteExamFn(ctx, examID)
 }
 
 func (m *mockExamService) ListSubjects(ctx context.Context, level, subjectType string) ([]SubjectOption, error) {
@@ -43,11 +86,88 @@ func (m *mockExamService) ListSubjects(ctx context.Context, level, subjectType s
 	return m.listSubjectsFn(ctx, level, subjectType)
 }
 
+func (m *mockExamService) CreateSubject(ctx context.Context, in CreateSubjectInput) (*SubjectOption, error) {
+	if m.createSubjectFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.createSubjectFn(ctx, in)
+}
+
+func (m *mockExamService) UpdateSubject(ctx context.Context, in UpdateSubjectInput) (*SubjectOption, error) {
+	if m.updateSubjectFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.updateSubjectFn(ctx, in)
+}
+
+func (m *mockExamService) DeleteSubject(ctx context.Context, subjectID int64) error {
+	if m.deleteSubjectFn == nil {
+		return errors.New("not implemented")
+	}
+	return m.deleteSubjectFn(ctx, subjectID)
+}
+
 func (m *mockExamService) ListExamsBySubject(ctx context.Context, subjectID int64) ([]ExamOption, error) {
 	if m.listExamsFn == nil {
 		return nil, errors.New("not implemented")
 	}
 	return m.listExamsFn(ctx, subjectID)
+}
+
+func (m *mockExamService) ListExamsForToken(ctx context.Context) ([]ExamTokenExam, error) {
+	if m.listExamsForTokenFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listExamsForTokenFn(ctx)
+}
+
+func (m *mockExamService) GenerateExamToken(ctx context.Context, examID, generatedBy int64, ttlMinutes int) (*ExamAccessToken, error) {
+	if m.generateExamTokenFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.generateExamTokenFn(ctx, examID, generatedBy, ttlMinutes)
+}
+
+func (m *mockExamService) ListExamAssignments(ctx context.Context, examID int64) ([]ExamAssignmentUser, error) {
+	if m.listExamAssignmentsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listExamAssignmentsFn(ctx, examID)
+}
+
+func (m *mockExamService) ReplaceExamAssignments(ctx context.Context, in ReplaceExamAssignmentsInput) ([]ExamAssignmentUser, error) {
+	if m.replaceExamAssignmentsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.replaceExamAssignmentsFn(ctx, in)
+}
+
+func (m *mockExamService) ReplaceExamAssignmentsByClass(ctx context.Context, in ReplaceExamAssignmentsByClassInput) ([]ExamAssignmentUser, error) {
+	if m.replaceExamAssignmentsByClassFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.replaceExamAssignmentsByClassFn(ctx, in)
+}
+
+func (m *mockExamService) ListExamQuestions(ctx context.Context, examID int64) ([]ExamQuestionManageItem, error) {
+	if m.listExamQuestionsFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.listExamQuestionsFn(ctx, examID)
+}
+
+func (m *mockExamService) UpsertExamQuestion(ctx context.Context, in UpsertExamQuestionInput) (*ExamQuestionManageItem, error) {
+	if m.upsertExamQuestionFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.upsertExamQuestionFn(ctx, in)
+}
+
+func (m *mockExamService) DeleteExamQuestion(ctx context.Context, examID, questionID int64) error {
+	if m.deleteExamQuestionFn == nil {
+		return errors.New("not implemented")
+	}
+	return m.deleteExamQuestionFn(ctx, examID, questionID)
 }
 
 func (m *mockExamService) GetAttemptSummary(ctx context.Context, attemptID int64) (*AttemptSummary, error) {
@@ -185,7 +305,7 @@ func TestStartAttemptUsesSessionStudentIDForNonPrivileged(t *testing.T) {
 	var gotExamID int64
 	var gotStudentID int64
 	h := NewHandler(&mockExamService{
-		startAttemptFn: func(ctx context.Context, examID, studentID int64) (*Attempt, error) {
+		startAttemptFn: func(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
 			gotExamID = examID
 			gotStudentID = studentID
 			return &Attempt{ID: 1, ExamID: examID, StudentID: studentID, Status: "in_progress", StartedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}, nil
@@ -212,7 +332,7 @@ func TestStartAttemptUsesSessionStudentIDForNonPrivileged(t *testing.T) {
 
 func TestStartAttemptAdminRequiresStudentID(t *testing.T) {
 	h := NewHandler(&mockExamService{
-		startAttemptFn: func(ctx context.Context, examID, studentID int64) (*Attempt, error) {
+		startAttemptFn: func(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
 			return &Attempt{ID: 1}, nil
 		},
 	})

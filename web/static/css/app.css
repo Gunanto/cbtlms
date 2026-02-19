@@ -399,6 +399,12 @@ textarea:focus-visible {
     gap: 10px;
 }
 
+.proktor-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
 .admin-stat-card {
     border-radius: 12px;
     padding: 12px;
@@ -631,6 +637,159 @@ textarea:focus-visible {
     margin: 0;
 }
 
+.editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+    background: #f8fbff;
+    padding: 8px;
+}
+
+.editor-toolbar .btn-inline {
+    min-height: 30px;
+    padding: 5px 9px;
+    border-radius: 7px;
+}
+
+.editor-select {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 5px 8px;
+    background: #fff;
+    min-height: 30px;
+}
+
+.rich-editor {
+    min-height: 160px;
+    outline: none;
+    overflow: auto;
+    border-radius: 0 0 8px 8px;
+}
+
+.rich-editor img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+.stimulus-editor-wrap.source-mode .rich-editor {
+    display: none;
+}
+
+.quill-editor-shell .ql-toolbar.ql-snow {
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    background: #f8fbff;
+}
+
+.quill-editor-shell .ql-container.ql-snow {
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    background: #fff;
+    height: auto !important;
+    min-height: 240px;
+}
+
+.quill-editor-shell {
+    margin-bottom: 0;
+}
+
+.quill-editor-shell .ql-editor {
+    height: auto;
+    min-height: 200px;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+#guru-stimulus-single-panel {
+    margin-bottom: 12px;
+    overflow: visible;
+}
+
+#guru-stimulus-single-editor .ql-toolbar.ql-snow {
+    position: relative;
+    z-index: 1;
+}
+
+#guru-stimulus-single-editor .ql-container.ql-snow {
+    height: auto !important;
+    min-height: 240px;
+}
+
+#guru-stimulus-single-editor .ql-editor {
+    min-height: 200px !important;
+    max-height: 360px !important;
+}
+
+.stimulus-submit-wrap {
+    margin-top: 10px;
+    margin-bottom: 8px;
+}
+
+.stimulus-submit-row {
+    display: block;
+    clear: both;
+    margin-top: 18px;
+    position: relative;
+    z-index: 3;
+}
+
+.stimulus-submit-row .btn {
+    width: 100%;
+}
+
+.field-error {
+    border-color: #ef9a9a;
+    color: #8b1d1d;
+    background: #fff5f5;
+    min-height: 0;
+}
+
+#guru-stimulus-live-preview {
+    max-height: 320px;
+    overflow: auto;
+}
+
+#guru-manuscripts-panel .stimulus-editor-wrap {
+    position: relative;
+    z-index: 1;
+}
+
+#guru-manuscripts-panel .admin-section-head {
+    position: relative;
+    z-index: 5;
+}
+
+#guru-manuscript-options-panel {
+    margin-top: 16px;
+    position: relative;
+    z-index: 6;
+}
+
+#guru-manuscript-options-panel .quill-editor-shell .ql-container.ql-snow {
+    min-height: 140px;
+}
+
+#guru-manuscript-options-panel .quill-editor-shell .ql-editor {
+    min-height: 110px;
+    max-height: 220px;
+}
+
+.manuscript-submit-row {
+    position: relative;
+    z-index: 8;
+    clear: both;
+}
+
+.manuscript-submit-row .btn {
+    width: 100%;
+}
+
 .doubt-toggle {
     display: flex;
     align-items: center;
@@ -758,6 +917,142 @@ textarea:focus-visible {
     padding: 18px;
 }
 
+body[data-page="admin_content"] .container,
+body[data-page="proktor_content"] .container,
+body[data-page="guru_content"] .container {
+    max-width: none;
+    margin: 0;
+    padding: 20px 22px 28px;
+}
+
+body[data-page="admin_content"] .container > .card,
+body[data-page="proktor_content"] .container > .card,
+body[data-page="guru_content"] .container > .card {
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+}
+
+body[data-page="admin_content"] .admin-layout,
+body[data-page="proktor_content"] .admin-layout,
+body[data-page="guru_content"] .admin-layout {
+    grid-template-columns: minmax(230px, 250px) minmax(0, 1fr);
+    gap: 18px;
+}
+
+body[data-page="admin_content"] .admin-sidebar,
+body[data-page="proktor_content"] .admin-sidebar,
+body[data-page="guru_content"] .admin-sidebar {
+    position: sticky;
+    top: 18px;
+    align-self: start;
+    max-height: calc(100vh - 36px);
+    overflow: auto;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 10px 26px rgba(31, 65, 122, 0.12);
+    padding: 14px;
+}
+
+body[data-page="admin_content"] .admin-content > .panel,
+body[data-page="proktor_content"] .admin-content > .panel,
+body[data-page="guru_content"] .admin-content > .panel {
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(31, 65, 122, 0.08);
+}
+
+body[data-page="admin_content"] .admin-overview,
+body[data-page="proktor_content"] .proktor-stats-grid,
+body[data-page="guru_content"] .proktor-stats-grid {
+    margin-bottom: 2px;
+}
+
+body[data-page="admin_content"] .admin-menu-btn,
+body[data-page="proktor_content"] .admin-menu-btn,
+body[data-page="guru_content"] .admin-menu-btn {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 12px;
+}
+
+body[data-page="admin_content"] .admin-menu-btn.active,
+body[data-page="proktor_content"] .admin-menu-btn.active,
+body[data-page="guru_content"] .admin-menu-btn.active {
+    box-shadow: 0 6px 14px rgba(32, 86, 168, 0.24);
+}
+
+body[data-page="admin_content"] .admin-content > .dashboard-hero,
+body[data-page="proktor_content"] .admin-content > .dashboard-hero,
+body[data-page="guru_content"] .admin-content > .dashboard-hero {
+    border: 1px solid #756de6;
+    background: linear-gradient(135deg, #3f43c4 0%, #6a48d8 52%, #8648d7 100%);
+    color: #f7f7ff;
+}
+
+.dashboard-hero .muted {
+    color: #d8dbff;
+}
+
+.dashboard-hero h2,
+.dashboard-hero h3,
+.dashboard-hero .stat-label,
+.dashboard-hero .stat-value {
+    color: #f7f7ff;
+}
+
+.dashboard-hero-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dashboard-hero-head h2 {
+    margin: 0;
+}
+
+.dashboard-quick-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.dashboard-quick-btn {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    color: #ffffff;
+}
+
+.dashboard-quick-btn:hover {
+    background: rgba(255, 255, 255, 0.27);
+}
+
+.dashboard-hero-message {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.42);
+    color: #ffffff;
+}
+
+body[data-page="admin_content"] .dashboard-hero .admin-stat-card,
+body[data-page="proktor_content"] .dashboard-hero .admin-stat-card,
+body[data-page="guru_content"] .dashboard-hero .admin-stat-card {
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 8px 14px rgba(28, 17, 92, 0.12);
+}
+
+body[data-page="admin_content"] .dashboard-hero .admin-stat-card .stat-label,
+body[data-page="admin_content"] .dashboard-hero .admin-stat-card .stat-value,
+body[data-page="proktor_content"] .dashboard-hero .admin-stat-card .stat-label,
+body[data-page="proktor_content"] .dashboard-hero .admin-stat-card .stat-value,
+body[data-page="guru_content"] .dashboard-hero .admin-stat-card .stat-label,
+body[data-page="guru_content"] .dashboard-hero .admin-stat-card .stat-value {
+    color: #0f172a;
+}
+
 @media (max-width: 900px) {
     .actions {
         grid-template-columns: 1fr;
@@ -791,5 +1086,25 @@ textarea:focus-visible {
     }
     .admin-sidebar {
         position: static;
+    }
+    body[data-page="admin_content"] .container,
+    body[data-page="proktor_content"] .container,
+    body[data-page="guru_content"] .container {
+        padding: 14px 12px 18px;
+    }
+    body[data-page="admin_content"] .admin-layout,
+    body[data-page="proktor_content"] .admin-layout,
+    body[data-page="guru_content"] .admin-layout {
+        grid-template-columns: 1fr;
+    }
+    body[data-page="admin_content"] .admin-sidebar,
+    body[data-page="proktor_content"] .admin-sidebar,
+    body[data-page="guru_content"] .admin-sidebar {
+        position: static;
+        max-height: none;
+    }
+    .dashboard-quick-actions {
+        width: 100%;
+        justify-content: flex-start;
     }
 }
