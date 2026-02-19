@@ -22,6 +22,17 @@ Tuning DB pool via environment (opsional):
 - `DB_MAX_IDLE_CONNS` (default `25`)
 - `DB_CONN_MAX_LIFETIME_MINUTES` (default `30`)
 
+## Frontend smoke test + UAT
+
+Smoke test route kritikal frontend:
+
+```bash
+go test ./internal/app -run TestFrontendSmokePublicRoutes -v
+```
+
+Checklist UAT manual ada di:
+- `docs/FRONTEND_UAT_RUNBOOK.md`
+
 ## Build + push image ke GHCR
 
 Workflow tersedia di:

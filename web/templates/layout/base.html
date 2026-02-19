@@ -5,7 +5,7 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{{.Title}}</title>
-        <link rel="stylesheet" href="/static/css/app.css" />
+        <link rel="stylesheet" href="/static/css/app.css?v={{.AssetVersion}}" />
     </head>
     <body data-page="{{.Page}}">
         <header class="topbar">
@@ -14,6 +14,7 @@
                 <a href="/simulasi">Login</a>
                 <a href="/simulasi">Simulasi</a>
                 <a href="/authoring">Authoring</a>
+                <a href="/admin">Admin</a>
                 <span id="nav-user" class="nav-user"></span>
                 <button
                     id="nav-logout"
@@ -30,11 +31,12 @@
             if eq .Page "login_content"}} {{template "login_content" .}} {{else
             if eq .Page "simulasi_content"}} {{template "simulasi_content" .}}
             {{else if eq .Page "authoring_content"}} {{template
-            "authoring_content" .}} {{else if eq .Page "attempt_content"}}
-            {{template "attempt_content" .}} {{else if eq .Page
-            "result_content"}} {{template "result_content" .}} {{end}}
+            "authoring_content" .}} {{else if eq .Page "admin_content"}}
+            {{template "admin_content" .}} {{else if eq .Page
+            "attempt_content"}} {{template "attempt_content" .}} {{else if eq
+            .Page "result_content"}} {{template "result_content" .}} {{end}}
         </main>
-        <script src="/static/js/app.js"></script>
+        <script src="/static/js/app.js?v={{.AssetVersion}}" defer></script>
     </body>
 </html>
 {{end}}

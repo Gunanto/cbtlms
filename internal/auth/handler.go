@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"cbtlms/internal/app/apiresp"
 
@@ -59,6 +61,25 @@ type createRegistrationRequest struct {
 
 type rejectRegistrationRequest struct {
 	Note string `json:"note"`
+}
+
+type adminCreateUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	FullName string `json:"full_name"`
+	Role     string `json:"role"`
+	SchoolID *int64 `json:"school_id"`
+	ClassID  *int64 `json:"class_id"`
+}
+
+type adminUpdateUserRequest struct {
+	FullName string `json:"full_name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+	SchoolID *int64 `json:"school_id"`
+	ClassID  *int64 `json:"class_id"`
 }
 
 type bootstrapInitRequest struct {
@@ -248,21 +269,236 @@ func (h *Handler) CreateRegistration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListPendingRegistrations(w http.ResponseWriter, r *http.Request) {
+	status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	limit := 50
+	offset := 0
 	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 		n, err := strconv.Atoi(v)
 		if err == nil {
 			limit = n
 		}
 	}
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil {
+			offset = n
+		}
+	}
 
-	items, err := h.svc.ListRegistrationPending(r.Context(), limit)
+	items, err := h.svc.ListRegistrations(r.Context(), status, limit, offset)
 	if err != nil {
+		if strings.Contains(err.Error(), "invalid status filter") {
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+			return
+		}
 		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
 		return
 	}
 
-	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: items})
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]any{
+		"items":  items,
+		"limit":  limit,
+		"offset": offset,
+		"status": status,
+	}})
+}
+
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	role := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("role")))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	limit := 50
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil {
+			limit = n
+		}
+	}
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err == nil {
+			offset = n
+		}
+	}
+
+	items, err := h.svc.ListUsers(r.Context(), role, q, limit, offset)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid role filter") {
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+			return
+		}
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]any{
+		"items":  items,
+		"limit":  limit,
+		"offset": offset,
+		"role":   role,
+		"q":      q,
+	}})
+}
+
+func (h *Handler) DashboardStats(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.AdminDashboardStats(r.Context())
+	if err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: out})
+}
+
+func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	admin, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	var req adminCreateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	out, err := h.svc.CreateUserByAdmin(r.Context(), admin.ID, AdminCreateUserInput{
+		Username: req.Username,
+		Email:    req.Email,
+		Password: req.Password,
+		FullName: req.FullName,
+		Role:     req.Role,
+		SchoolID: req.SchoolID,
+		ClassID:  req.ClassID,
+	})
+	if err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, apiResponse{OK: true, Data: out})
+}
+
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	admin, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid user id"})
+		return
+	}
+
+	var req adminUpdateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	out, err := h.svc.UpdateUserByAdmin(r.Context(), admin.ID, id, AdminUpdateUserInput{
+		FullName: req.FullName,
+		Email:    req.Email,
+		Password: req.Password,
+		Role:     req.Role,
+		SchoolID: req.SchoolID,
+		ClassID:  req.ClassID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUserNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: out})
+}
+
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	admin, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid user id"})
+		return
+	}
+	if id == admin.ID {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "cannot deactivate your own account"})
+		return
+	}
+
+	err = h.svc.DeactivateUserByAdmin(r.Context(), admin.ID, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUserNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]string{"status": "deactivated"}})
+}
+
+func (h *Handler) ExportUsersExcel(w http.ResponseWriter, r *http.Request) {
+	role := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("role")))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	content, err := h.svc.ExportUsersExcel(r.Context(), role, q)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid role filter") {
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+			return
+		}
+		writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		return
+	}
+
+	filename := fmt.Sprintf("daftar_pengguna_%s.xlsx", time.Now().Format("20060102_150405"))
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
+func (h *Handler) ImportUsersExcel(w http.ResponseWriter, r *http.Request) {
+	admin, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid multipart form"})
+		return
+	}
+
+	file, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "file field is required"})
+		return
+	}
+	defer file.Close()
+
+	report, err := h.svc.ImportUsersExcel(r.Context(), admin.ID, file)
+	if err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]any{
+		"filename": hdr.Filename,
+		"report":   report,
+		"summary":  "import completed",
+	}})
 }
 
 func (h *Handler) ApproveRegistration(w http.ResponseWriter, r *http.Request) {

@@ -1,81 +1,269 @@
 {{define "authoring_content"}}
 <section class="card">
-  <h2>Authoring Soal (Milestone B.1)</h2>
-  <p class="muted">Halaman ini untuk workflow stimulus, versi soal draft/final, dan paralel exam.</p>
+    <h2>Authoring Soal (Milestone B.1)</h2>
+    <p class="muted">
+        Halaman ini untuk workflow stimulus, versi soal draft/final, dan paralel
+        exam.
+    </p>
 
-  <div class="author-grid">
-    <section class="panel">
-      <h3>Stimulus</h3>
-      <form id="stimulus-form" class="form-grid">
-        <label>Subject ID <input type="number" name="subject_id" min="1" required /></label>
-        <label>Title <input type="text" name="title" required /></label>
-        <label>Type
-          <select name="stimulus_type">
-            <option value="single">single</option>
-            <option value="multiteks">multiteks</option>
-          </select>
-        </label>
-        <label>Body/Tabs JSON
-          <textarea name="content_raw" rows="5" placeholder='{"body":"Isi stimulus"}' required></textarea>
-        </label>
-        <button class="btn" type="submit">Simpan Stimulus</button>
-      </form>
+    <div class="author-grid">
+        <section class="panel">
+            <h3>Stimulus</h3>
+            <form id="stimulus-form" class="form-grid">
+                <label
+                    >Subject ID
+                    <input type="number" name="subject_id" min="1" required
+                /></label>
+                <label>Title <input type="text" name="title" required /></label>
+                <label
+                    >Type
+                    <select name="stimulus_type">
+                        <option value="single">single</option>
+                        <option value="multiteks">multiteks</option>
+                    </select>
+                </label>
+                <label
+                    >Body/Tabs JSON
+                    <textarea
+                        name="content_raw"
+                        rows="5"
+                        placeholder='{"body":"Isi stimulus"}'
+                        required
+                    ></textarea>
+                </label>
+                <button class="btn" type="submit">Simpan Stimulus</button>
+            </form>
 
-      <form id="stimulus-list-form" class="form-grid mt">
-        <label>List Stimulus by Subject ID <input type="number" name="subject_id" min="1" required /></label>
-        <button class="btn btn-secondary" type="submit">Muat Stimuli</button>
-      </form>
-      <pre id="stimulus-output" class="box code-box"></pre>
-    </section>
+            <form id="stimulus-list-form" class="form-grid mt">
+                <label
+                    >List Stimulus by Subject ID
+                    <input type="number" name="subject_id" min="1" required
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    Muat Stimuli
+                </button>
+            </form>
+            <pre id="stimulus-output" class="box code-box"></pre>
+        </section>
 
-    <section class="panel">
-      <h3>Versi Soal (Draft/Final)</h3>
-      <form id="version-create-form" class="form-grid">
-        <label>Question ID <input type="number" name="question_id" min="1" required /></label>
-        <label>Stimulus ID (opsional) <input type="number" name="stimulus_id" min="1" /></label>
-        <label>Stem HTML <textarea name="stem_html" rows="4"></textarea></label>
-        <label>Explanation HTML <textarea name="explanation_html" rows="3"></textarea></label>
-        <label>Hint HTML <textarea name="hint_html" rows="2"></textarea></label>
-        <label>Answer Key JSON <textarea name="answer_key_raw" rows="5" placeholder='{"correct":"B"}' required></textarea></label>
-        <label>Duration Seconds <input type="number" name="duration_seconds" min="0" /></label>
-        <label>Weight <input type="number" name="weight" min="0.1" step="0.1" /></label>
-        <label>Change Note <input type="text" name="change_note" /></label>
-        <button class="btn" type="submit">Simpan Draft Versi</button>
-      </form>
+        <section class="panel">
+            <h3>Versi Soal (Draft/Final)</h3>
+            <form id="version-create-form" class="form-grid">
+                <label
+                    >Question ID
+                    <input type="number" name="question_id" min="1" required
+                /></label>
+                <label
+                    >Stimulus ID (opsional)
+                    <input type="number" name="stimulus_id" min="1"
+                /></label>
+                <label
+                    >Stem HTML <textarea name="stem_html" rows="4"></textarea>
+                </label>
+                <label
+                    >Explanation HTML
+                    <textarea name="explanation_html" rows="3"></textarea>
+                </label>
+                <label
+                    >Hint HTML <textarea name="hint_html" rows="2"></textarea>
+                </label>
+                <label
+                    >Answer Key JSON
+                    <textarea
+                        name="answer_key_raw"
+                        rows="5"
+                        placeholder='{"correct":"B"}'
+                        required
+                    ></textarea>
+                </label>
+                <label
+                    >Duration Seconds
+                    <input type="number" name="duration_seconds" min="0"
+                /></label>
+                <label
+                    >Weight
+                    <input type="number" name="weight" min="0.1" step="0.1"
+                /></label>
+                <label
+                    >Change Note <input type="text" name="change_note"
+                /></label>
+                <button class="btn" type="submit">Simpan Draft Versi</button>
+            </form>
 
-      <form id="version-finalize-form" class="form-grid mt">
-        <label>Question ID <input type="number" name="question_id" min="1" required /></label>
-        <label>Version No <input type="number" name="version_no" min="1" required /></label>
-        <button class="btn btn-secondary" type="submit">Finalize Version</button>
-      </form>
+            <form id="version-finalize-form" class="form-grid mt">
+                <label
+                    >Question ID
+                    <input type="number" name="question_id" min="1" required
+                /></label>
+                <label
+                    >Version No
+                    <input type="number" name="version_no" min="1" required
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    Finalize Version
+                </button>
+            </form>
 
-      <form id="version-list-form" class="form-grid mt">
-        <label>Question ID <input type="number" name="question_id" min="1" required /></label>
-        <button class="btn btn-secondary" type="submit">List Versions</button>
-      </form>
-      <pre id="version-output" class="box code-box"></pre>
-    </section>
+            <form id="version-list-form" class="form-grid mt">
+                <label
+                    >Question ID
+                    <input type="number" name="question_id" min="1" required
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    List Versions
+                </button>
+            </form>
+            <pre id="version-output" class="box code-box"></pre>
+        </section>
 
-    <section class="panel">
-      <h3>Paralel Exam</h3>
-      <form id="parallel-create-form" class="form-grid">
-        <label>Exam ID <input type="number" name="exam_id" min="1" required /></label>
-        <label>Question ID <input type="number" name="question_id" min="1" required /></label>
-        <label>Parallel Group <input type="text" name="parallel_group" value="default" /></label>
-        <label>Parallel Order <input type="number" name="parallel_order" min="1" required /></label>
-        <label>Parallel Label <input type="text" name="parallel_label" placeholder="pararel_1" required /></label>
-        <button class="btn" type="submit">Tambah Parallel</button>
-      </form>
+        <section class="panel">
+            <h3>Paralel Exam</h3>
+            <form id="parallel-create-form" class="form-grid">
+                <label
+                    >Exam ID
+                    <input type="number" name="exam_id" min="1" required
+                /></label>
+                <label
+                    >Question ID
+                    <input type="number" name="question_id" min="1" required
+                /></label>
+                <label
+                    >Parallel Group
+                    <input type="text" name="parallel_group" value="default"
+                /></label>
+                <label
+                    >Parallel Order
+                    <input type="number" name="parallel_order" min="1" required
+                /></label>
+                <label
+                    >Parallel Label
+                    <input
+                        type="text"
+                        name="parallel_label"
+                        placeholder="pararel_1"
+                        required
+                /></label>
+                <button class="btn" type="submit">Tambah Parallel</button>
+            </form>
 
-      <form id="parallel-list-form" class="form-grid mt">
-        <label>Exam ID <input type="number" name="exam_id" min="1" required /></label>
-        <label>Parallel Group (opsional) <input type="text" name="parallel_group" value="default" /></label>
-        <button class="btn btn-secondary" type="submit">List Parallel</button>
-      </form>
-      <pre id="parallel-output" class="box code-box"></pre>
-    </section>
-  </div>
+            <form id="parallel-list-form" class="form-grid mt">
+                <label
+                    >Exam ID
+                    <input type="number" name="exam_id" min="1" required
+                /></label>
+                <label
+                    >Parallel Group (opsional)
+                    <input type="text" name="parallel_group" value="default"
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    List Parallel
+                </button>
+            </form>
+            <pre id="parallel-output" class="box code-box"></pre>
+        </section>
 
-  <p id="authoring-message" class="muted"></p>
+        <section class="panel">
+            <h3>Workflow Review</h3>
+            <form id="review-create-form" class="form-grid">
+                <label
+                    >Question Version ID
+                    <input
+                        type="number"
+                        name="question_version_id"
+                        min="1"
+                        required
+                /></label>
+                <label
+                    >Reviewer ID
+                    <input type="number" name="reviewer_id" min="1" required
+                /></label>
+                <label
+                    >Exam ID (opsional)
+                    <input type="number" name="exam_id" min="1"
+                /></label>
+                <label
+                    >Catatan Task (opsional)
+                    <textarea
+                        name="note"
+                        rows="2"
+                        placeholder="Catatan assignment reviewer"
+                    ></textarea>
+                </label>
+                <button class="btn" type="submit">Buat Review Task</button>
+            </form>
+
+            <form id="review-list-form" class="form-grid mt">
+                <label
+                    >Status
+                    <select name="status">
+                        <option value="">Semua status</option>
+                        <option value="menunggu_reviu">menunggu_reviu</option>
+                        <option value="disetujui">disetujui</option>
+                        <option value="perlu_revisi">perlu_revisi</option>
+                    </select>
+                </label>
+                <label
+                    >Reviewer ID (opsional, admin/proktor)
+                    <input type="number" name="reviewer_id" min="1"
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    Muat Task
+                </button>
+            </form>
+
+            <div
+                id="review-task-list"
+                class="box mt"
+                role="status"
+                aria-live="polite"
+            ></div>
+
+            <form id="review-decision-form" class="form-grid mt">
+                <label
+                    >Task ID
+                    <input type="number" name="task_id" min="1" required
+                /></label>
+                <label
+                    >Keputusan
+                    <select name="status" id="review-decision-status">
+                        <option value="disetujui">disetujui</option>
+                        <option value="perlu_revisi">perlu_revisi</option>
+                    </select>
+                </label>
+                <label id="review-note-label"
+                    >Alasan/Catatan
+                    <textarea
+                        name="note"
+                        id="review-note-input"
+                        rows="2"
+                        placeholder="Wajib diisi jika perlu_revisi"
+                    ></textarea>
+                </label>
+                <button class="btn" type="submit">Kirim Keputusan</button>
+            </form>
+
+            <form id="review-history-form" class="form-grid mt">
+                <label
+                    >Question ID
+                    <input type="number" name="question_id" min="1" required
+                /></label>
+                <button class="btn btn-secondary" type="submit">
+                    Lihat Riwayat Review Soal
+                </button>
+            </form>
+            <pre
+                id="review-output"
+                class="box code-box"
+                aria-live="polite"
+            ></pre>
+        </section>
+    </div>
+
+    <p
+        id="authoring-message"
+        class="muted"
+        role="status"
+        aria-live="polite"
+    ></p>
 </section>
 {{end}}

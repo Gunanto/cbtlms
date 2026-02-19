@@ -1,30 +1,89 @@
 {{define "attempt_content"}}
 <section class="card" data-attempt-id="{{.AttemptID}}" id="attempt-root">
-  <div class="attempt-head">
-    <h2>Ujian Attempt #{{.AttemptID}}</h2>
-    <div class="timer">Sisa waktu: <span id="remaining-label">-</span></div>
-  </div>
+    <div class="attempt-head">
+        <h2>Ujian Attempt #{{.AttemptID}}</h2>
+        <div class="attempt-tools">
+            <button id="info-soal-btn" type="button" class="chip chip-primary">
+                Informasi Soal
+            </button>
+            <div class="chip chip-timer">
+                Sisa Waktu : <span id="remaining-label">-</span>
+            </div>
+            <button
+                id="daftar-soal-btn"
+                type="button"
+                class="chip chip-primary"
+                aria-expanded="false"
+                aria-controls="daftar-soal-panel"
+            >
+                Daftar Soal
+            </button>
+        </div>
+    </div>
+    <section id="daftar-soal-panel" class="question-list-panel" hidden>
+        <div class="question-list-head">Navigasi Nomor Soal</div>
+        <div class="question-list-legend">
+            <span class="legend-item"
+                ><i class="legend-dot legend-current"></i> Aktif</span
+            >
+            <span class="legend-item"
+                ><i class="legend-dot legend-answered"></i> Terjawab</span
+            >
+            <span class="legend-item"
+                ><i class="legend-dot legend-doubt"></i> Ragu</span
+            >
+        </div>
+        <div id="daftar-soal-body" class="question-list-grid"></div>
+    </section>
 
-  <div class="attempt-layout">
-    <article class="panel stimulus-panel">
-      <h3>Stimulus</h3>
-      <div id="stimulus-box" class="box muted">Belum ada stimulus.</div>
-    </article>
+    <div class="attempt-layout">
+        <article class="panel stimulus-panel">
+            <h3>Stimulus</h3>
+            <div id="stimulus-box" class="box muted">Belum ada stimulus.</div>
+        </article>
 
-    <article class="panel question-panel">
-      <h3 id="question-title">Soal</h3>
-      <div id="stem-box" class="box"></div>
-      <div id="options-box" class="box"></div>
-    </article>
-  </div>
+        <article class="panel question-panel">
+            <h3 id="question-title">Soal</h3>
+            <div id="stem-box" class="box"></div>
+            <div id="options-box" class="box"></div>
+        </article>
+    </div>
 
-  <div class="actions">
-    <button id="prev-btn" class="btn btn-secondary" type="button">Soal Sebelumnya</button>
-    <label class="doubt-toggle"><input id="doubt-checkbox" type="checkbox" /> Ragu-ragu</label>
-    <button id="next-btn" class="btn" type="button">Soal Berikutnya</button>
-    <button id="submit-btn" class="btn btn-danger" type="button">Submit Final</button>
-  </div>
+    <div class="actions">
+        <button
+            id="prev-btn"
+            class="btn btn-danger btn-nav-round action-prev"
+            type="button"
+        >
+            <span class="nav-icon-circle" aria-hidden="true">&lt;</span>
+            Soal Sebelumnya
+        </button>
+        <label class="doubt-toggle doubt-pill action-doubt"
+            ><input id="doubt-checkbox" type="checkbox" /> Ragu-ragu</label
+        >
+        <button
+            id="next-btn"
+            class="btn btn-nav-round action-next"
+            type="button"
+        >
+            Soal Berikutnya
+            <span class="nav-icon-circle" aria-hidden="true">&gt;</span>
+        </button>
+        <button
+            id="submit-btn"
+            class="btn btn-danger action-submit"
+            type="button"
+        >
+            Submit Final
+        </button>
+    </div>
 
-  <p id="attempt-message" class="muted"></p>
+    <p id="attempt-message" class="muted" role="status" aria-live="polite"></p>
+    <p
+        id="attempt-event-message"
+        class="muted event-note"
+        role="status"
+        aria-live="polite"
+    ></p>
 </section>
 {{end}}

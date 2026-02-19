@@ -1,0 +1,603 @@
+{{define "admin_content"}}
+<section class="card">
+    <section class="panel admin-overview">
+        <h2>Dasbor Admin</h2>
+        <div class="admin-stats-grid mt">
+            <article class="admin-stat-card stat-admin">
+                <div class="stat-label">Admin</div>
+                <div id="admin-stat-admin" class="stat-value">0</div>
+            </article>
+            <article class="admin-stat-card stat-proktor">
+                <div class="stat-label">Proktor</div>
+                <div id="admin-stat-proktor" class="stat-value">0</div>
+            </article>
+            <article class="admin-stat-card stat-guru">
+                <div class="stat-label">Guru</div>
+                <div id="admin-stat-guru" class="stat-value">0</div>
+            </article>
+            <article class="admin-stat-card stat-siswa">
+                <div class="stat-label">Siswa</div>
+                <div id="admin-stat-siswa" class="stat-value">0</div>
+            </article>
+            <article class="admin-stat-card stat-sekolah">
+                <div class="stat-label">Sekolah</div>
+                <div id="admin-stat-sekolah" class="stat-value">0</div>
+            </article>
+        </div>
+    </section>
+
+    <div class="admin-layout mt">
+        <aside class="admin-sidebar panel">
+            <h3>Menu Admin</h3>
+            <div class="admin-menu-list">
+                <button
+                    class="btn btn-secondary admin-menu-btn"
+                    type="button"
+                    data-admin-menu="master"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <rect x="4" y="5.5" width="16" height="14" rx="2" />
+                            <path d="M8 3.5v4M16 3.5v4M4 10.5h16" />
+                        </svg>
+                    </span>
+                    Data Master
+                </button>
+                <button
+                    class="btn btn-secondary admin-menu-btn"
+                    type="button"
+                    data-admin-menu="users"
+                >
+                    <span class="admin-menu-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false">
+                            <path
+                                d="M16 19.5v-1a3 3 0 0 0-3-3H8a3 3 0 0 0-3 3v1"
+                            />
+                            <circle cx="10.5" cy="9" r="2.5" />
+                            <path d="M19 19.5v-1a3 3 0 0 0-2.25-2.9" />
+                            <path d="M16.5 6.5a2.5 2.5 0 0 1 0 5" />
+                        </svg>
+                    </span>
+                    Daftar Pengguna
+                </button>
+            </div>
+        </aside>
+
+        <div class="admin-content">
+            <section id="admin-users-panel" class="panel">
+                <h3>Daftar Pengguna</h3>
+                <div
+                    id="admin-message"
+                    class="box mt"
+                    role="status"
+                    aria-live="polite"
+                ></div>
+                <form id="admin-registration-filter-form" class="form-grid">
+                    <label
+                        >Peran
+                        <select name="role">
+                            <option value="">semua</option>
+                            <option value="admin">admin</option>
+                            <option value="proktor">proktor</option>
+                            <option value="guru">guru</option>
+                            <option value="siswa">siswa</option>
+                        </select>
+                    </label>
+                    <label
+                        >Cari (nama/email/username)
+                        <input
+                            type="text"
+                            name="q"
+                            placeholder="Ketik kata kunci"
+                    /></label>
+                    <label
+                        >Batas Data
+                        <input
+                            type="number"
+                            name="limit"
+                            min="1"
+                            max="200"
+                            value="50"
+                            required
+                    /></label>
+                    <button class="btn btn-secondary" type="submit">
+                        Muat Data
+                    </button>
+                </form>
+
+                <div id="admin-registration-summary" class="mt muted"></div>
+                <div class="admin-users-toolbar mt">
+                    <button
+                        id="admin-user-export-btn"
+                        class="btn btn-secondary icon-btn"
+                        type="button"
+                        title="Ekspor Pengguna Excel"
+                        aria-label="Ekspor Pengguna Excel"
+                    >
+                        <span class="icon-wrap" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M12 4v10" />
+                                <path d="M8 10l4 4 4-4" />
+                                <path d="M4 18h16" />
+                            </svg>
+                        </span>
+                        Ekspor Excel
+                    </button>
+                    <button
+                        id="admin-user-import-btn"
+                        class="btn btn-secondary icon-btn"
+                        type="button"
+                        title="Impor Pengguna Excel"
+                        aria-label="Impor Pengguna Excel"
+                    >
+                        <span class="icon-wrap" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M12 20V10" />
+                                <path d="M8 14l4-4 4 4" />
+                                <path d="M4 6h16" />
+                            </svg>
+                        </span>
+                        Impor Excel
+                    </button>
+                    <button
+                        id="admin-user-add-btn"
+                        class="btn btn-secondary icon-btn"
+                        type="button"
+                        title="Tambah Pengguna"
+                        aria-label="Tambah Pengguna"
+                    >
+                        <span class="icon-wrap" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" focusable="false">
+                                <path d="M12 5v14M5 12h14" />
+                            </svg>
+                        </span>
+                        Tambah Pengguna
+                    </button>
+                </div>
+                <div class="actions mt">
+                    <button
+                        id="admin-prev-page-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Sebelumnya
+                    </button>
+                    <button
+                        id="admin-next-page-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Berikutnya
+                    </button>
+                    <span id="admin-page-info" class="muted"></span>
+                </div>
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Nama</th>
+                                <th>Peran</th>
+                                <th>Sekolah</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Aktif</th>
+                                <th>Dibuat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-registration-body">
+                            <tr>
+                                <td colspan="10" class="muted">
+                                    Belum ada data. Klik Muat Data.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <pre
+                    id="admin-registration-output"
+                    class="box code-box mt"
+                ></pre>
+            </section>
+
+            <section id="admin-master-panel" class="panel" hidden>
+                <h3>Data Master</h3>
+                <div id="admin-master-message" class="box mt muted">
+                    Kelola Jenjang, Sekolah, dan Kelas melalui tabel berikut.
+                </div>
+
+                <div class="admin-master-toolbar mt">
+                    <button
+                        id="admin-master-refresh-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Muat Ulang Data Master
+                    </button>
+                </div>
+
+                <section class="mt">
+                    <div class="admin-section-head">
+                        <h4>Jenjang</h4>
+                        <button
+                            id="admin-level-add-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Tambah Jenjang
+                        </button>
+                    </div>
+                    <div class="table-wrap mt">
+                        <table class="bs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nama Jenjang</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-level-table-body">
+                                <tr>
+                                    <td colspan="4" class="muted">
+                                        Belum ada data jenjang.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="mt">
+                    <div class="admin-section-head">
+                        <h4>Sekolah</h4>
+                        <button
+                            id="admin-school-add-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Tambah Sekolah
+                        </button>
+                    </div>
+                    <div class="table-wrap mt">
+                        <table class="bs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nama Sekolah</th>
+                                    <th>NPSN</th>
+                                    <th>Alamat</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-school-table-body">
+                                <tr>
+                                    <td colspan="5" class="muted">
+                                        Belum ada data sekolah.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="mt">
+                    <div class="admin-section-head">
+                        <h4>Kelas</h4>
+                        <button
+                            id="admin-class-add-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Tambah Kelas
+                        </button>
+                    </div>
+                    <div class="table-wrap mt">
+                        <table class="bs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nama Sekolah</th>
+                                    <th>Tingkat</th>
+                                    <th>Nama Kelas</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-class-table-body">
+                                <tr>
+                                    <td colspan="5" class="muted">
+                                        Belum ada data kelas.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <form id="admin-import-form" class="form-grid mt">
+                    <h4>Impor Data Siswa (CSV)</h4>
+                    <label
+                        >File CSV
+                        <input
+                            type="file"
+                            name="file"
+                            accept=".csv,text/csv"
+                            required
+                    /></label>
+                    <button class="btn btn-secondary" type="submit">
+                        Impor CSV
+                    </button>
+                </form>
+            </section>
+        </div>
+    </div>
+
+    <dialog id="admin-user-detail-dialog" class="admin-dialog">
+        <form method="dialog" class="form-grid">
+            <h3>Detil Pengguna</h3>
+            <pre id="admin-user-detail-output" class="box code-box"></pre>
+            <div class="actions">
+                <button class="btn btn-secondary" type="submit">Tutup</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-user-create-dialog" class="admin-dialog">
+        <form id="admin-user-create-form" class="form-grid" method="dialog">
+            <h3>Tambah Pengguna</h3>
+            <label
+                >Username <input type="text" name="username" required
+            /></label>
+            <label
+                >Nama Lengkap <input type="text" name="full_name" required
+            /></label>
+            <label>Email <input type="email" name="email" /></label>
+            <label
+                >Peran
+                <select name="role">
+                    <option value="siswa">siswa</option>
+                    <option value="guru">guru</option>
+                    <option value="proktor">proktor</option>
+                    <option value="admin">admin</option>
+                </select>
+            </label>
+            <label
+                >Sekolah
+                <select name="school_id">
+                    <option value="">Tanpa Sekolah</option>
+                </select>
+            </label>
+            <label
+                >Kelas
+                <select name="class_id" disabled>
+                    <option value="">Pilih Sekolah Dulu</option>
+                </select>
+            </label>
+            <label
+                >Password
+                <input type="password" name="password" minlength="8" required
+            /></label>
+            <div class="actions">
+                <button
+                    id="admin-user-create-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn" type="submit">Simpan</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-user-update-dialog" class="admin-dialog">
+        <form id="admin-user-update-form" class="form-grid" method="dialog">
+            <h3>Ubah Pengguna</h3>
+            <input type="hidden" name="id" />
+            <label
+                >Nama Lengkap <input type="text" name="full_name" required
+            /></label>
+            <label>Email <input type="email" name="email" /></label>
+            <label
+                >Peran
+                <select name="role">
+                    <option value="siswa">siswa</option>
+                    <option value="guru">guru</option>
+                    <option value="proktor">proktor</option>
+                    <option value="admin">admin</option>
+                </select>
+            </label>
+            <label
+                >Sekolah
+                <select name="school_id">
+                    <option value="">Tanpa Sekolah</option>
+                </select>
+            </label>
+            <label
+                >Kelas
+                <select name="class_id" disabled>
+                    <option value="">Pilih Sekolah Dulu</option>
+                </select>
+            </label>
+            <label
+                >Password Baru (opsional)
+                <input type="password" name="password" minlength="8"
+            /></label>
+            <div class="actions">
+                <button
+                    id="admin-user-update-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn btn-secondary" type="submit">
+                    Perbarui
+                </button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-user-delete-dialog" class="admin-dialog">
+        <form id="admin-user-delete-form" class="form-grid" method="dialog">
+            <h3>Nonaktifkan Pengguna</h3>
+            <input type="hidden" name="id" />
+            <p id="admin-user-delete-label" class="muted"></p>
+            <div class="actions">
+                <button
+                    id="admin-user-delete-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn btn-danger" type="submit">
+                    Nonaktifkan
+                </button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-user-import-dialog" class="admin-dialog">
+        <form id="admin-user-import-form" class="form-grid" method="dialog">
+            <h3>Impor Pengguna Excel</h3>
+            <p class="muted">
+                Gunakan kolom: username, full_name, role, email, password,
+                is_active.
+            </p>
+            <label
+                >File Excel
+                <input
+                    type="file"
+                    name="file"
+                    accept=".xlsx,.xlsm,.xls"
+                    required
+            /></label>
+            <pre id="admin-user-import-output" class="box code-box"></pre>
+            <div class="actions">
+                <button
+                    id="admin-user-import-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn" type="submit">Impor</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-user-import-error-dialog" class="admin-dialog">
+        <form class="form-grid" method="dialog">
+            <h3>Peringatan Impor Pengguna</h3>
+            <p class="muted">
+                Beberapa baris gagal diproses. Periksa daftar berikut:
+            </p>
+            <pre id="admin-user-import-error-output" class="box code-box"></pre>
+            <div class="actions">
+                <button
+                    id="admin-user-import-error-close-btn"
+                    class="btn btn-secondary"
+                    type="submit"
+                >
+                    Tutup
+                </button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-level-dialog" class="admin-dialog">
+        <form id="admin-level-dialog-form" class="form-grid" method="dialog">
+            <h3 id="admin-level-dialog-title">Tambah Jenjang</h3>
+            <input type="hidden" name="id" />
+            <label
+                >Nama Jenjang <input type="text" name="name" required
+            /></label>
+            <div class="actions">
+                <button
+                    id="admin-level-dialog-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn" type="submit">Simpan</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-school-dialog" class="admin-dialog">
+        <form id="admin-school-dialog-form" class="form-grid" method="dialog">
+            <h3 id="admin-school-dialog-title">Tambah Sekolah</h3>
+            <input type="hidden" name="id" />
+            <label
+                >Nama Sekolah <input type="text" name="name" required
+            /></label>
+            <label>NPSN <input type="text" name="code" /></label>
+            <label
+                >Alamat
+                <textarea name="address" rows="2"></textarea>
+            </label>
+            <div class="actions">
+                <button
+                    id="admin-school-dialog-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn" type="submit">Simpan</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-class-dialog" class="admin-dialog">
+        <form id="admin-class-dialog-form" class="form-grid" method="dialog">
+            <h3 id="admin-class-dialog-title">Tambah Kelas</h3>
+            <input type="hidden" name="id" />
+            <label
+                >Sekolah
+                <select name="school_id" required>
+                    <option value="">Pilih Sekolah</option>
+                </select>
+            </label>
+            <label
+                >Tingkat Kelas <input type="text" name="grade_level" required
+            /></label>
+            <label>Nama Kelas <input type="text" name="name" required /></label>
+            <div class="actions">
+                <button
+                    id="admin-class-dialog-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn" type="submit">Simpan</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="admin-master-delete-dialog" class="admin-dialog">
+        <form id="admin-master-delete-form" class="form-grid" method="dialog">
+            <h3>Konfirmasi Hapus</h3>
+            <input type="hidden" name="entity" />
+            <input type="hidden" name="id" />
+            <p id="admin-master-delete-label" class="muted"></p>
+            <div class="actions">
+                <button
+                    id="admin-master-delete-cancel-btn"
+                    class="btn btn-secondary"
+                    type="button"
+                >
+                    Batal
+                </button>
+                <button class="btn btn-danger" type="submit">Hapus</button>
+            </div>
+        </form>
+    </dialog>
+</section>
+{{end}}

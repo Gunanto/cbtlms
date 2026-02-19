@@ -1,20 +1,36 @@
 {{define "login_content"}}
 <section class="card narrow">
-  <h2>Login</h2>
-  <p class="muted">Masuk dengan username/email dan password.</p>
+    <h2>Login</h2>
+    <p class="muted">Masuk dengan username/email dan password.</p>
 
-  <form id="login-form" class="form-grid">
-    <label>
-      Username / Email
-      <input type="text" name="identifier" required />
-    </label>
-    <label>
-      Password
-      <input type="password" name="password" required />
-    </label>
-    <button class="btn" type="submit">Masuk</button>
-  </form>
+    <form id="login-form" class="form-grid">
+        <label>
+            Username / Email
+            <input type="text" name="identifier" required />
+        </label>
+        <label>
+            Password
+            <div class="password-field">
+                <input
+                    id="login-password"
+                    type="password"
+                    name="password"
+                    required
+                />
+                <button
+                    id="toggle-login-password"
+                    class="btn btn-secondary btn-inline"
+                    type="button"
+                    aria-label="Tampilkan password"
+                    aria-pressed="false"
+                >
+                    Lihat
+                </button>
+            </div>
+        </label>
+        <button class="btn" type="submit">Masuk</button>
+    </form>
 
-  <p id="login-message" class="muted"></p>
+    <p id="login-message" class="muted" role="status" aria-live="polite"></p>
 </section>
 {{end}}

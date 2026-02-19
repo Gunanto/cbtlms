@@ -28,6 +28,7 @@ var (
 	ErrRegistrationState    = errors.New("registration is not pending")
 	ErrRateLimited          = errors.New("too many requests")
 	ErrBootstrapDenied      = errors.New("bootstrap denied")
+	ErrUserNotFound         = errors.New("user not found")
 )
 
 type Service struct {
@@ -91,13 +92,56 @@ type RegistrationRecord struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+type AdminUserRecord struct {
+	ID            int64      `json:"id"`
+	Username      string     `json:"username"`
+	Email         *string    `json:"email,omitempty"`
+	FullName      string     `json:"full_name"`
+	Role          string     `json:"role"`
+	SchoolID      *int64     `json:"school_id,omitempty"`
+	SchoolName    *string    `json:"school_name,omitempty"`
+	ClassID       *int64     `json:"class_id,omitempty"`
+	ClassName     *string    `json:"class_name,omitempty"`
+	IsActive      bool       `json:"is_active"`
+	AccountStatus string     `json:"account_status"`
+	ApprovedAt    *time.Time `json:"approved_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+type AdminDashboardStats struct {
+	AdminCount   int64 `json:"admin_count"`
+	ProktorCount int64 `json:"proktor_count"`
+	GuruCount    int64 `json:"guru_count"`
+	SiswaCount   int64 `json:"siswa_count"`
+	SchoolCount  int64 `json:"school_count"`
+}
+
+type AdminCreateUserInput struct {
+	Username string
+	Email    string
+	Password string
+	FullName string
+	Role     string
+	SchoolID *int64
+	ClassID  *int64
+}
+
+type AdminUpdateUserInput struct {
+	FullName string
+	Email    string
+	Role     string
+	Password string
+	SchoolID *int64
+	ClassID  *int64
+}
+
 type BootstrapInput struct {
-	Token          string
-	AdminUsername  string
-	AdminEmail     string
-	AdminPassword  string
+	Token           string
+	AdminUsername   string
+	AdminEmail      string
+	AdminPassword   string
 	ProktorUsername string
-	ProktorEmail   string
+	ProktorEmail    string
 	ProktorPassword string
 }
 
@@ -366,12 +410,12 @@ func (s *Service) BootstrapAccounts(ctx context.Context, in BootstrapInput) erro
 
 	admin := BootstrapInput{
 		AdminUsername: strings.TrimSpace(in.AdminUsername),
-		AdminEmail: strings.ToLower(strings.TrimSpace(in.AdminEmail)),
+		AdminEmail:    strings.ToLower(strings.TrimSpace(in.AdminEmail)),
 		AdminPassword: strings.TrimSpace(in.AdminPassword),
 	}
 	proktor := BootstrapInput{
 		ProktorUsername: strings.TrimSpace(in.ProktorUsername),
-		ProktorEmail: strings.ToLower(strings.TrimSpace(in.ProktorEmail)),
+		ProktorEmail:    strings.ToLower(strings.TrimSpace(in.ProktorEmail)),
 		ProktorPassword: strings.TrimSpace(in.ProktorPassword),
 	}
 
@@ -510,18 +554,28 @@ func (s *Service) CreateRegistration(ctx context.Context, in RegistrationInput) 
 	return id, nil
 }
 
-func (s *Service) ListRegistrationPending(ctx context.Context, limit int) ([]RegistrationRecord, error) {
+func (s *Service) ListRegistrations(ctx context.Context, status string, limit, offset int) ([]RegistrationRecord, error) {
+	status = strings.ToLower(strings.TrimSpace(status))
+	switch status {
+	case "", "pending", "approved", "rejected":
+	default:
+		return nil, errors.New("invalid status filter")
+	}
 	if limit <= 0 || limit > 200 {
 		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, role_requested, email, full_name, phone, institution_name, status, review_note, reviewed_by, reviewed_at, created_at
 		FROM registration_requests
-		WHERE status = 'pending'
-		ORDER BY created_at ASC
-		LIMIT $1
-	`, limit)
+		WHERE ($1 = '' OR status = $1)
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2
+		OFFSET $3
+	`, status, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list registrations: %w", err)
 	}
@@ -559,6 +613,10 @@ func (s *Service) ListRegistrationPending(ctx context.Context, limit int) ([]Reg
 		return nil, fmt.Errorf("iterate registrations: %w", err)
 	}
 	return out, nil
+}
+
+func (s *Service) ListRegistrationPending(ctx context.Context, limit int) ([]RegistrationRecord, error) {
+	return s.ListRegistrations(ctx, "pending", limit, 0)
 }
 
 func (s *Service) ApproveRegistration(ctx context.Context, registrationID, reviewerID int64) (int64, error) {
@@ -776,6 +834,355 @@ func (s *Service) getActiveUserTx(ctx context.Context, tx *sql.Tx, userID int64)
 		return nil, ErrForbidden
 	}
 	return &u, nil
+}
+
+func isValidRole(role string) bool {
+	switch role {
+	case "admin", "proktor", "guru", "siswa":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset int) ([]AdminUserRecord, error) {
+	role = strings.ToLower(strings.TrimSpace(role))
+	if role != "" && !isValidRole(role) {
+		return nil, errors.New("invalid role filter")
+	}
+	q = strings.TrimSpace(q)
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			u.id,
+			u.username,
+			u.email,
+			u.full_name,
+			u.role,
+			sch.school_id,
+			sch.name AS school_name,
+			sch.class_id,
+			sch.class_name,
+			u.is_active,
+			u.account_status,
+			u.approved_at,
+			u.created_at
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT
+				s.name,
+				e.school_id,
+				e.class_id,
+				c.name AS class_name
+			FROM enrollments e
+			JOIN schools s ON s.id = e.school_id
+			LEFT JOIN classes c ON c.id = e.class_id
+			WHERE e.user_id = u.id
+			ORDER BY e.enrolled_at DESC, e.id DESC
+			LIMIT 1
+		) sch ON TRUE
+		WHERE ($1 = '' OR u.role = $1)
+		  AND (
+			$2 = ''
+			OR u.username ILIKE '%' || $2 || '%'
+			OR u.full_name ILIKE '%' || $2 || '%'
+			OR COALESCE(u.email,'') ILIKE '%' || $2 || '%'
+			OR COALESCE(sch.name,'') ILIKE '%' || $2 || '%'
+		  )
+		ORDER BY u.created_at DESC, u.id DESC
+		LIMIT $3
+		OFFSET $4
+	`, role, q, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]AdminUserRecord, 0, limit)
+	for rows.Next() {
+		var it AdminUserRecord
+		var email sql.NullString
+		var schoolID sql.NullInt64
+		var schoolName sql.NullString
+		var classID sql.NullInt64
+		var className sql.NullString
+		var approvedAt sql.NullTime
+		if err := rows.Scan(&it.ID, &it.Username, &email, &it.FullName, &it.Role, &schoolID, &schoolName, &classID, &className, &it.IsActive, &it.AccountStatus, &approvedAt, &it.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if email.Valid {
+			it.Email = &email.String
+		}
+		if schoolID.Valid {
+			it.SchoolID = &schoolID.Int64
+		}
+		if schoolName.Valid {
+			it.SchoolName = &schoolName.String
+		}
+		if classID.Valid {
+			it.ClassID = &classID.Int64
+		}
+		if className.Valid {
+			it.ClassName = &className.String
+		}
+		if approvedAt.Valid {
+			it.ApprovedAt = &approvedAt.Time
+		}
+		out = append(out, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Service) AdminDashboardStats(ctx context.Context) (*AdminDashboardStats, error) {
+	out := &AdminDashboardStats{}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE role = 'admin' AND is_active = TRUE),
+			COUNT(*) FILTER (WHERE role = 'proktor' AND is_active = TRUE),
+			COUNT(*) FILTER (WHERE role = 'guru' AND is_active = TRUE),
+			COUNT(*) FILTER (WHERE role = 'siswa' AND is_active = TRUE)
+		FROM users
+	`).Scan(&out.AdminCount, &out.ProktorCount, &out.GuruCount, &out.SiswaCount); err != nil {
+		return nil, fmt.Errorf("query user stats: %w", err)
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM schools
+		WHERE is_active = TRUE
+	`).Scan(&out.SchoolCount); err != nil {
+		return nil, fmt.Errorf("query school stats: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Service) CreateUserByAdmin(ctx context.Context, actorID int64, in AdminCreateUserInput) (*AdminUserRecord, error) {
+	username := strings.ToLower(strings.TrimSpace(in.Username))
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	fullName := strings.TrimSpace(in.FullName)
+	role := strings.ToLower(strings.TrimSpace(in.Role))
+	if username == "" || fullName == "" || !isValidRole(role) || len(strings.TrimSpace(in.Password)) < 8 {
+		return nil, errors.New("username, full_name, role, and password(>=8) are required")
+	}
+	if email != "" {
+		if _, err := mail.ParseAddress(email); err != nil {
+			return nil, errors.New("invalid email")
+		}
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), s.bcryptCost)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var out AdminUserRecord
+	var emailNull sql.NullString
+	var approvedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO users (
+			username, password_hash, full_name, role, is_active,
+			email, email_verified_at, account_status, approved_by, approved_at, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, TRUE,
+			NULLIF($5,''), CASE WHEN NULLIF($5,'') IS NOT NULL THEN now() ELSE NULL END,
+			'active', $6, now(), now(), now()
+		)
+		RETURNING id, username, email, full_name, role, is_active, account_status, approved_at, created_at
+	`, username, string(hash), fullName, role, email, actorID).Scan(
+		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+	if emailNull.Valid {
+		out.Email = &emailNull.String
+	}
+	if approvedAt.Valid {
+		out.ApprovedAt = &approvedAt.Time
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO auth_identities (user_id, provider, provider_key, created_at)
+		VALUES ($1, 'password', $2, now())
+	`, out.ID, username); err != nil {
+		return nil, fmt.Errorf("insert auth identity: %w", err)
+	}
+
+	if err := upsertUserEnrollmentTx(ctx, tx, out.ID, in.SchoolID, in.ClassID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit create user: %w", err)
+	}
+	return &out, nil
+}
+
+func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, in AdminUpdateUserInput) (*AdminUserRecord, error) {
+	_ = actorID
+	fullName := strings.TrimSpace(in.FullName)
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	role := strings.ToLower(strings.TrimSpace(in.Role))
+	if userID <= 0 || fullName == "" || !isValidRole(role) {
+		return nil, errors.New("id, full_name, and valid role are required")
+	}
+	if email != "" {
+		if _, err := mail.ParseAddress(email); err != nil {
+			return nil, errors.New("invalid email")
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if strings.TrimSpace(in.Password) != "" {
+		if len(strings.TrimSpace(in.Password)) < 8 {
+			return nil, errors.New("password must be at least 8 characters")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), s.bcryptCost)
+		if err != nil {
+			return nil, fmt.Errorf("hash password: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE users
+			SET password_hash = $2,
+				updated_at = now()
+			WHERE id = $1
+		`, userID, string(hash)); err != nil {
+			return nil, fmt.Errorf("update password: %w", err)
+		}
+	}
+
+	var out AdminUserRecord
+	var emailNull sql.NullString
+	var approvedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		UPDATE users
+		SET full_name = $2,
+			role = $3,
+			email = NULLIF($4,''),
+			email_verified_at = CASE
+				WHEN NULLIF($4,'') IS NOT NULL THEN COALESCE(email_verified_at, now())
+				ELSE email_verified_at
+			END,
+			updated_at = now()
+		WHERE id = $1
+		RETURNING id, username, email, full_name, role, is_active, account_status, approved_at, created_at
+	`, userID, fullName, role, email).Scan(
+		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+	if emailNull.Valid {
+		out.Email = &emailNull.String
+	}
+	if approvedAt.Valid {
+		out.ApprovedAt = &approvedAt.Time
+	}
+
+	if err := upsertUserEnrollmentTx(ctx, tx, userID, in.SchoolID, in.ClassID); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit update user: %w", err)
+	}
+	return &out, nil
+}
+
+func (s *Service) DeactivateUserByAdmin(ctx context.Context, actorID, userID int64) error {
+	_ = actorID
+	if userID <= 0 {
+		return errors.New("invalid user id")
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET is_active = FALSE,
+			account_status = 'suspended',
+			updated_at = now()
+		WHERE id = $1
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("deactivate user: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func upsertUserEnrollmentTx(ctx context.Context, tx *sql.Tx, userID int64, schoolID, classID *int64) error {
+	if schoolID == nil && classID == nil {
+		return nil
+	}
+	if (schoolID == nil) != (classID == nil) {
+		return errors.New("school_id dan class_id harus diisi berpasangan")
+	}
+
+	if *schoolID <= 0 || *classID <= 0 {
+		if _, err := tx.ExecContext(ctx, `
+			DELETE FROM enrollments
+			WHERE user_id = $1
+		`, userID); err != nil {
+			return fmt.Errorf("clear enrollment: %w", err)
+		}
+		return nil
+	}
+
+	var valid bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM classes c
+			JOIN schools s ON s.id = c.school_id
+			WHERE c.id = $1
+			  AND c.school_id = $2
+			  AND c.is_active = TRUE
+			  AND s.is_active = TRUE
+		)
+	`, *classID, *schoolID).Scan(&valid); err != nil {
+		return fmt.Errorf("validate enrollment refs: %w", err)
+	}
+	if !valid {
+		return errors.New("kelas tidak valid untuk sekolah yang dipilih")
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM enrollments
+		WHERE user_id = $1
+	`, userID); err != nil {
+		return fmt.Errorf("replace enrollment delete old: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO enrollments (user_id, school_id, class_id, status, enrolled_at, created_at)
+		VALUES ($1, $2, $3, 'active', now(), now())
+	`, userID, *schoolID, *classID); err != nil {
+		return fmt.Errorf("replace enrollment insert: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) isGuardLocked(ctx context.Context, purpose, subjectKey string) (bool, time.Time, error) {

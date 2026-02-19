@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"html/template"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"cbtlms/internal/app/observability"
@@ -58,10 +61,15 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	r.Get("/metrics", obs.MetricsHandler)
 
 	renderPage := func(w http.ResponseWriter, contentTemplate, pageTitle string, extra map[string]any) {
+		assetVersion := resolveAssetVersion(
+			"web/static/css/app.css",
+			"web/static/js/app.js",
+		)
 		data := map[string]any{
 			"Title":           pageTitle,
 			"Page":            contentTemplate,
 			"ContentTemplate": contentTemplate,
+			"AssetVersion":    assetVersion,
 		}
 		for k, v := range extra {
 			data[k] = v
@@ -82,6 +90,9 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	})
 	r.Get("/authoring", func(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "authoring_content", "Authoring Soal", map[string]any{})
+	})
+	r.Get("/admin", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "admin_content", "Admin Dashboard", map[string]any{})
 	})
 	r.Get("/ujian/{id}", func(w http.ResponseWriter, r *http.Request) {
 		attemptID := chi.URLParam(r, "id")
@@ -110,6 +121,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 			secure.Post("/auth/logout", authHandler.Logout)
 			secure.Get("/subjects", examHandler.ListSubjects)
 			secure.Get("/exams", examHandler.ListExams)
+			secure.Get("/levels", masterHandler.ListEducationLevels)
 
 			secure.Post("/attempts/start", examHandler.Start)
 			secure.Get("/attempts/{id}", examHandler.GetAttempt)
@@ -135,6 +147,10 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 
 			secure.Group(func(admin chi.Router) {
 				admin.Use(authHandler.RequireRoles("admin", "proktor"))
+				admin.Get("/admin/dashboard/stats", authHandler.DashboardStats)
+				admin.Get("/admin/users", authHandler.ListUsers)
+				admin.Get("/admin/schools", masterHandler.ListSchools)
+				admin.Get("/admin/classes", masterHandler.ListClasses)
 				admin.Get("/admin/registrations", authHandler.ListPendingRegistrations)
 				admin.Post("/admin/registrations/{id}/approve", authHandler.ApproveRegistration)
 				admin.Post("/admin/registrations/{id}/reject", authHandler.RejectRegistration)
@@ -142,10 +158,53 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 				admin.Post("/admin/classes", masterHandler.CreateClass)
 				admin.Post("/admin/imports/students", masterHandler.ImportStudentsCSV)
 			})
+
+			secure.Group(func(adminOnly chi.Router) {
+				adminOnly.Use(authHandler.RequireRoles("admin"))
+				adminOnly.Post("/admin/users", authHandler.CreateUser)
+				adminOnly.Put("/admin/users/{id}", authHandler.UpdateUser)
+				adminOnly.Delete("/admin/users/{id}", authHandler.DeleteUser)
+				adminOnly.Get("/admin/users/export", authHandler.ExportUsersExcel)
+				adminOnly.Post("/admin/users/import", authHandler.ImportUsersExcel)
+				adminOnly.Put("/admin/schools/{id}", masterHandler.UpdateSchool)
+				adminOnly.Delete("/admin/schools/{id}", masterHandler.DeleteSchool)
+				adminOnly.Put("/admin/classes/{id}", masterHandler.UpdateClass)
+				adminOnly.Delete("/admin/classes/{id}", masterHandler.DeleteClass)
+				adminOnly.Post("/admin/levels", masterHandler.CreateEducationLevel)
+				adminOnly.Put("/admin/levels/{id}", masterHandler.UpdateEducationLevel)
+				adminOnly.Delete("/admin/levels/{id}", masterHandler.DeleteEducationLevel)
+			})
 		})
 	})
 
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	staticFiles := http.FileServer(http.Dir("web/static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(r.URL.Query().Get("v")) != "" {
+			w.Header().Set("Cache-Control", "public, max-age=2592000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		staticFiles.ServeHTTP(w, r)
+	})))
 
 	return r
+}
+
+func resolveAssetVersion(paths ...string) string {
+	var maxMtime int64
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		mtime := info.ModTime().Unix()
+		if mtime > maxMtime {
+			maxMtime = mtime
+		}
+	}
+	if maxMtime <= 0 {
+		return "dev"
+	}
+	return strconv.FormatInt(maxMtime, 10)
 }

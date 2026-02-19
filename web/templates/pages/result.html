@@ -1,21 +1,23 @@
 {{define "result_content"}}
 <section class="card" data-attempt-id="{{.AttemptID}}" id="result-root">
-  <h2>Hasil Attempt #{{.AttemptID}}</h2>
-  <div id="result-summary" class="box muted">Memuat ringkasan...</div>
-  <div class="box">
-    <table class="result-table" id="result-table">
-      <thead>
-        <tr>
-          <th>No</th>
-          <th>Question ID</th>
-          <th>Jawaban</th>
-          <th>Kunci</th>
-          <th>Reason</th>
-          <th>Skor</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+    <h2>Hasil Attempt #{{.AttemptID}}</h2>
+    <div id="result-summary" class="box muted" role="status" aria-live="polite">
+        Memuat ringkasan...
+    </div>
+    <div class="box">
+        <table class="result-table" id="result-table">
+            <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Question ID</th>
+                    <th>Jawaban</th>
+                    <th>Kunci</th>
+                    <th>Reason</th>
+                    <th>Skor</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
 </section>
 {{end}}
