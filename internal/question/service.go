@@ -99,28 +99,43 @@ type CreateQuestionVersionInput struct {
 	CreatedBy       int64
 }
 
+type UpdateQuestionVersionInput struct {
+	QuestionID      int64
+	VersionNo       int
+	StimulusID      *int64
+	StemHTML        *string
+	ExplanationHTML *string
+	HintHTML        *string
+	AnswerKey       json.RawMessage
+	Options         []QuestionOptionInput
+	DurationSeconds *int
+	Weight          *float64
+	ChangeNote      *string
+}
+
 type QuestionOptionInput struct {
 	OptionKey  string `json:"option_key"`
 	OptionHTML string `json:"option_html"`
 }
 
 type QuestionVersion struct {
-	ID              int64           `json:"id"`
-	QuestionID      int64           `json:"question_id"`
-	VersionNo       int             `json:"version_no"`
-	StimulusID      *int64          `json:"stimulus_id,omitempty"`
-	StemHTML        string          `json:"stem_html"`
-	ExplanationHTML *string         `json:"explanation_html,omitempty"`
-	HintHTML        *string         `json:"hint_html,omitempty"`
-	AnswerKey       json.RawMessage `json:"answer_key"`
-	Status          string          `json:"status"`
-	IsPublic        bool            `json:"is_public"`
-	IsActive        bool            `json:"is_active"`
-	DurationSeconds *int            `json:"duration_seconds,omitempty"`
-	Weight          float64         `json:"weight"`
-	ChangeNote      *string         `json:"change_note,omitempty"`
-	CreatedBy       *int64          `json:"created_by,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
+	ID              int64                 `json:"id"`
+	QuestionID      int64                 `json:"question_id"`
+	VersionNo       int                   `json:"version_no"`
+	StimulusID      *int64                `json:"stimulus_id,omitempty"`
+	StemHTML        string                `json:"stem_html"`
+	ExplanationHTML *string               `json:"explanation_html,omitempty"`
+	HintHTML        *string               `json:"hint_html,omitempty"`
+	AnswerKey       json.RawMessage       `json:"answer_key"`
+	Status          string                `json:"status"`
+	IsPublic        bool                  `json:"is_public"`
+	IsActive        bool                  `json:"is_active"`
+	DurationSeconds *int                  `json:"duration_seconds,omitempty"`
+	Weight          float64               `json:"weight"`
+	ChangeNote      *string               `json:"change_note,omitempty"`
+	Options         []QuestionOptionInput `json:"options,omitempty"`
+	CreatedBy       *int64                `json:"created_by,omitempty"`
+	CreatedAt       time.Time             `json:"created_at"`
 }
 
 type CreateQuestionParallelInput struct {
@@ -317,7 +332,7 @@ func (s *Service) CreateQuestion(ctx context.Context, in CreateQuestionInput) (*
 	return &out, nil
 }
 
-func (s *Service) ListQuestions(ctx context.Context, subjectID int64) ([]QuestionBlueprint, error) {
+func (s *Service) ListQuestions(ctx context.Context, subjectID int64, ownerID *int64) ([]QuestionBlueprint, error) {
 	query := `
 		SELECT q.id, q.subject_id, s.education_level, s.subject_type, s.name,
 			q.question_type, q.difficulty, q.metadata, q.created_at, q.updated_at
@@ -325,10 +340,18 @@ func (s *Service) ListQuestions(ctx context.Context, subjectID int64) ([]Questio
 		JOIN subjects s ON s.id = q.subject_id
 		WHERE q.is_active = TRUE
 	`
-	args := make([]any, 0, 1)
+	args := make([]any, 0, 2)
 	if subjectID > 0 {
-		query += ` AND q.subject_id = $1`
+		query += fmt.Sprintf(` AND q.subject_id = $%d`, len(args)+1)
 		args = append(args, subjectID)
+	}
+	if ownerID != nil && *ownerID > 0 {
+		query += fmt.Sprintf(` AND EXISTS (
+			SELECT 1 FROM question_versions qv
+			WHERE qv.question_id = q.id
+			  AND qv.created_by = $%d
+		)`, len(args)+1)
+		args = append(args, *ownerID)
 	}
 	query += ` ORDER BY q.id DESC`
 
@@ -779,7 +802,222 @@ func (s *Service) ListQuestionVersions(ctx context.Context, questionID int64) ([
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate question versions: %w", err)
 	}
+	options, err := s.listQuestionOptions(ctx, s.db, questionID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Options = append([]QuestionOptionInput(nil), options...)
+	}
 	return items, nil
+}
+
+func (s *Service) UpdateQuestionVersion(ctx context.Context, in UpdateQuestionVersionInput) (*QuestionVersion, error) {
+	if in.QuestionID <= 0 || in.VersionNo <= 0 {
+		return nil, ErrInvalidInput
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	row := tx.QueryRowContext(ctx, `
+		SELECT id, question_id, version_no, stimulus_id, stem_html, explanation_html, hint_html,
+			answer_key, status, is_public, is_active, duration_seconds, weight, change_note, created_by, created_at
+		FROM question_versions
+		WHERE question_id = $1 AND version_no = $2
+		FOR UPDATE
+	`, in.QuestionID, in.VersionNo)
+	item, err := scanQuestionVersion(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("load question version: %w", err)
+	}
+	if item.Status != "draft" && item.Status != "revisi" {
+		return nil, fmt.Errorf("%w: hanya versi draft/revisi yang boleh diubah", ErrInvalidInput)
+	}
+
+	var questionType string
+	if err := tx.QueryRowContext(ctx, `SELECT question_type FROM questions WHERE id = $1`, in.QuestionID).Scan(&questionType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrQuestionNotFound
+		}
+		return nil, fmt.Errorf("load question type: %w", err)
+	}
+
+	next := *item
+	if in.StimulusID != nil {
+		if *in.StimulusID <= 0 {
+			return nil, fmt.Errorf("%w: stimulus_id must be positive", ErrInvalidInput)
+		}
+		next.StimulusID = in.StimulusID
+	}
+	if in.StemHTML != nil {
+		v := strings.TrimSpace(*in.StemHTML)
+		if v == "" {
+			return nil, fmt.Errorf("%w: stem_html cannot be empty", ErrInvalidInput)
+		}
+		next.StemHTML = v
+	}
+	if in.ExplanationHTML != nil {
+		v := strings.TrimSpace(*in.ExplanationHTML)
+		next.ExplanationHTML = &v
+	}
+	if in.HintHTML != nil {
+		v := strings.TrimSpace(*in.HintHTML)
+		next.HintHTML = &v
+	}
+	if len(in.AnswerKey) > 0 {
+		if !json.Valid(in.AnswerKey) {
+			return nil, fmt.Errorf("%w: answer_key must be valid json", ErrInvalidInput)
+		}
+		next.AnswerKey = in.AnswerKey
+	}
+	if in.DurationSeconds != nil {
+		if *in.DurationSeconds < 0 {
+			return nil, fmt.Errorf("%w: duration_seconds cannot be negative", ErrInvalidInput)
+		}
+		next.DurationSeconds = in.DurationSeconds
+	}
+	if in.Weight != nil {
+		if *in.Weight <= 0 {
+			return nil, fmt.Errorf("%w: weight must be > 0", ErrInvalidInput)
+		}
+		next.Weight = *in.Weight
+	}
+	if in.ChangeNote != nil {
+		v := strings.TrimSpace(*in.ChangeNote)
+		next.ChangeNote = &v
+	}
+	if strings.TrimSpace(next.StemHTML) == "" {
+		return nil, fmt.Errorf("%w: stem_html is required", ErrInvalidInput)
+	}
+	if len(next.AnswerKey) == 0 {
+		next.AnswerKey = json.RawMessage(`{}`)
+	}
+	if err := validateAnswerKey(questionType, next.AnswerKey); err != nil {
+		return nil, err
+	}
+
+	optionsInput := in.Options
+	if len(optionsInput) == 0 {
+		optionsInput, err = s.listQuestionOptions(ctx, tx, in.QuestionID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	normalizedOptions, correctOptionKeys, err := normalizeAndValidateOptions(questionType, optionsInput, next.AnswerKey)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedRow := tx.QueryRowContext(ctx, `
+		UPDATE question_versions
+		SET stimulus_id = $3,
+			stem_html = $4,
+			explanation_html = $5,
+			hint_html = $6,
+			answer_key = $7::jsonb,
+			duration_seconds = $8,
+			weight = $9,
+			change_note = $10
+		WHERE question_id = $1 AND version_no = $2
+		RETURNING id, question_id, version_no, stimulus_id, stem_html, explanation_html, hint_html,
+			answer_key, status, is_public, is_active, duration_seconds, weight, change_note, created_by, created_at
+	`, in.QuestionID, in.VersionNo, nullInt64Ptr(next.StimulusID), next.StemHTML, nullStringPtr(next.ExplanationHTML), nullStringPtr(next.HintHTML), []byte(next.AnswerKey), nullIntPtr(next.DurationSeconds), next.Weight, nullStringPtr(next.ChangeNote))
+	out, err := scanQuestionVersion(updatedRow)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("update question version: %w", err)
+	}
+
+	if len(normalizedOptions) > 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM question_options WHERE question_id = $1`, in.QuestionID); err != nil {
+			return nil, fmt.Errorf("clear question options: %w", err)
+		}
+		for _, opt := range normalizedOptions {
+			isCorrect := correctOptionKeys[opt.OptionKey]
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO question_options (question_id, option_key, option_html, is_correct)
+				VALUES ($1, $2, $3, $4)
+			`, in.QuestionID, opt.OptionKey, opt.OptionHTML, isCorrect); err != nil {
+				return nil, fmt.Errorf("insert question option: %w", err)
+			}
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE questions SET updated_at = now() WHERE id = $1`, in.QuestionID); err != nil {
+		return nil, fmt.Errorf("update question timestamp: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Service) DeleteQuestionVersion(ctx context.Context, questionID int64, versionNo int) error {
+	if questionID <= 0 || versionNo <= 0 {
+		return ErrInvalidInput
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status
+		FROM question_versions
+		WHERE question_id = $1 AND version_no = $2
+		FOR UPDATE
+	`, questionID, versionNo).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrVersionNotFound
+		}
+		return fmt.Errorf("load question version: %w", err)
+	}
+	if status != "draft" && status != "revisi" {
+		return fmt.Errorf("%w: hanya versi draft/revisi yang boleh dihapus", ErrInvalidInput)
+	}
+
+	res, err := tx.ExecContext(ctx, `
+		DELETE FROM question_versions
+		WHERE question_id = $1 AND version_no = $2
+	`, questionID, versionNo)
+	if err != nil {
+		return fmt.Errorf("delete question version: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrVersionNotFound
+	}
+
+	var maxVersion sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT MAX(version_no) FROM question_versions WHERE question_id = $1`, questionID).Scan(&maxVersion); err != nil {
+		return fmt.Errorf("load latest version: %w", err)
+	}
+	if maxVersion.Valid {
+		if _, err := tx.ExecContext(ctx, `UPDATE questions SET version = $2, updated_at = now() WHERE id = $1`, questionID, int(maxVersion.Int64)); err != nil {
+			return fmt.Errorf("update question version pointer: %w", err)
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `UPDATE questions SET version = 1, updated_at = now() WHERE id = $1`, questionID); err != nil {
+			return fmt.Errorf("reset question version pointer: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) CreateQuestionParallel(ctx context.Context, in CreateQuestionParallelInput) (*QuestionParallel, error) {
@@ -1246,6 +1484,10 @@ type baseVersionData struct {
 	ChangeNote      *string
 }
 
+type queryContextRunner interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 func (s *Service) loadBaseVersionForCreate(ctx context.Context, tx *sql.Tx, questionID int64, defaultStem string) (*baseVersionData, int, error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT version_no, stimulus_id, stem_html, explanation_html, hint_html,
@@ -1319,6 +1561,32 @@ func (s *Service) loadBaseVersionForCreate(ctx context.Context, tx *sql.Tx, ques
 		Weight:          weight,
 		ChangeNote:      changePtr,
 	}, versionNo + 1, nil
+}
+
+func (s *Service) listQuestionOptions(ctx context.Context, q queryContextRunner, questionID int64) ([]QuestionOptionInput, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT option_key, option_html
+		FROM question_options
+		WHERE question_id = $1
+		ORDER BY option_key ASC
+	`, questionID)
+	if err != nil {
+		return nil, fmt.Errorf("query question options: %w", err)
+	}
+	defer rows.Close()
+
+	options := make([]QuestionOptionInput, 0)
+	for rows.Next() {
+		var opt QuestionOptionInput
+		if err := rows.Scan(&opt.OptionKey, &opt.OptionHTML); err != nil {
+			return nil, fmt.Errorf("scan question option: %w", err)
+		}
+		options = append(options, opt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate question options: %w", err)
+	}
+	return options, nil
 }
 
 func validateStimulusContent(stimulusType string, raw json.RawMessage) error {

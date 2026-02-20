@@ -346,6 +346,82 @@
                         </button>
                     </div>
                 </div>
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Mapel</th>
+                                <th>Judul</th>
+                                <th>Tipe</th>
+                                <th>Dibuat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guru-stimulus-body">
+                            <tr>
+                                <td colspan="6" class="muted">
+                                    Belum ada data stimuli.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="admin-section-head mt">
+                    <div id="guru-stimulus-page-info" class="muted">
+                        Baris 0 - 0
+                    </div>
+                    <div class="action-icons">
+                        <label class="muted">
+                            Tampil
+                            <select id="guru-stimulus-page-size" name="limit">
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                        <button
+                            id="guru-stimulus-prev-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Sebelumnya
+                        </button>
+                        <button
+                            id="guru-stimulus-next-btn"
+                            class="btn btn-secondary btn-inline"
+                            type="button"
+                        >
+                            Berikutnya
+                        </button>
+                    </div>
+                </div>
+                <form
+                    id="guru-stimulus-list-form"
+                    class="form-grid mt stimulus-filter-inline"
+                >
+                    <label
+                        >Filter Mapel
+                        <select
+                            id="guru-stimulus-list-subject"
+                            name="subject_id"
+                            required
+                        ></select>
+                    </label>
+                    <label
+                        >Cari Judul
+                        <input
+                            id="guru-stimulus-search"
+                            name="search"
+                            type="text"
+                            placeholder="Ketik judul stimulus"
+                        />
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Muat Stimuli
+                    </button>
+                </form>
 
                 <form id="guru-stimulus-import-form" class="form-grid mt">
                     <label
@@ -393,10 +469,9 @@
                         class="panel stimulus-editor-wrap"
                     >
                         <h4>Konten Single</h4>
-                        <div
-                            id="guru-stimulus-single-editor"
-                            class="quill-editor-shell mt"
-                        ></div>
+                        <div class="quill-editor-shell mt">
+                            <div id="guru-stimulus-single-editor"></div>
+                        </div>
                     </section>
 
                     <section
@@ -432,93 +507,95 @@
                         Konten preview akan muncul di sini.
                     </div>
                 </section>
+            </section>
 
-                <form id="guru-stimulus-list-form" class="form-grid mt">
-                    <label
-                        >Filter Mapel
-                        <select
-                            id="guru-stimulus-list-subject"
-                            name="subject_id"
-                            required
-                        ></select>
-                    </label>
-                    <label
-                        >Cari Judul
-                        <input
-                            id="guru-stimulus-search"
-                            name="search"
-                            type="text"
-                            placeholder="Ketik judul stimulus"
-                        />
-                    </label>
-                    <label
-                        >Batas Data
-                        <select id="guru-stimulus-page-size" name="limit">
-                            <option value="5">5</option>
-                            <option value="10" selected>10</option>
-                            <option value="25">25</option>
-                            <option value="50">50</option>
-                        </select>
-                    </label>
-                    <button class="btn btn-secondary" type="submit">
-                        Muat Stimuli
-                    </button>
-                </form>
-
+            <section id="guru-manuscripts-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Naskah Soal</h3>
+                    <div class="action-icons">
+                        <label class="muted">
+                            Scope Soal
+                            <select id="guru-question-owner-scope">
+                                <option value="mine" selected>Soal Saya</option>
+                                <option value="all">Semua Soal Mapel</option>
+                            </select>
+                        </label>
+                        <button
+                            id="guru-manuscript-import-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Import Soal (CSV Word)
+                        </button>
+                        <button
+                            id="guru-manuscript-refresh-btn"
+                            class="btn btn-secondary"
+                            type="button"
+                        >
+                            Muat Naskah
+                        </button>
+                    </div>
+                </div>
+                <div
+                    id="guru-manuscript-message"
+                    class="box mt"
+                    role="status"
+                    aria-live="polite"
+                >
+                    Pilih aksi pada tabel naskah untuk mengedit, hapus, atau
+                    finalize.
+                </div>
                 <div class="table-wrap mt">
                     <table class="bs-table">
                         <thead>
                             <tr>
-                                <th>ID</th>
-                                <th>Mapel</th>
-                                <th>Judul</th>
-                                <th>Tipe</th>
+                                <th>QVID</th>
+                                <th>Question ID</th>
+                                <th>Version</th>
+                                <th>Stimulus ID</th>
+                                <th>Status</th>
                                 <th>Dibuat</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
-                        <tbody id="guru-stimulus-body">
+                        <tbody id="guru-manuscript-body">
                             <tr>
-                                <td colspan="6" class="muted">
-                                    Belum ada data stimuli.
+                                <td colspan="7" class="muted">
+                                    Belum ada data versi naskah.
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="admin-section-head mt">
-                    <div id="guru-stimulus-page-info" class="muted">
+                    <div id="guru-manuscript-page-info" class="muted">
                         Baris 0 - 0
                     </div>
                     <div class="action-icons">
+                        <label class="muted">
+                            Tampil
+                            <select id="guru-manuscript-page-size">
+                                <option value="15" selected>15</option>
+                                <option value="30">30</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
                         <button
-                            id="guru-stimulus-prev-btn"
+                            id="guru-manuscript-prev-btn"
                             class="btn btn-secondary btn-inline"
                             type="button"
                         >
                             Sebelumnya
                         </button>
                         <button
-                            id="guru-stimulus-next-btn"
+                            id="guru-manuscript-next-btn"
                             class="btn btn-secondary btn-inline"
                             type="button"
                         >
                             Berikutnya
                         </button>
                     </div>
-                </div>
-            </section>
-
-            <section id="guru-manuscripts-panel" class="panel" hidden>
-                <div class="admin-section-head">
-                    <h3>Naskah Soal</h3>
-                    <button
-                        id="guru-manuscript-refresh-btn"
-                        class="btn btn-secondary"
-                        type="button"
-                    >
-                        Muat Naskah
-                    </button>
                 </div>
 
                 <form id="guru-manuscript-form" class="form-grid mt">
@@ -549,10 +626,15 @@
                     </label>
                     <section class="panel stimulus-editor-wrap">
                         <h4>Naskah Soal (Stem)</h4>
-                        <div
-                            id="guru-manuscript-stem-editor"
-                            class="quill-editor-shell mt"
-                        ></div>
+                        <input
+                            type="hidden"
+                            name="editing_version_no"
+                            id="guru-manuscript-editing-version-no"
+                            value=""
+                        />
+                        <div class="quill-editor-shell mt">
+                            <div id="guru-manuscript-stem-editor"></div>
+                        </div>
                         <input
                             type="hidden"
                             name="stem_html"
@@ -621,10 +703,9 @@
                     </label>
                     <section class="panel stimulus-editor-wrap">
                         <h4>Penjelasan (opsional)</h4>
-                        <div
-                            id="guru-manuscript-explanation-editor"
-                            class="quill-editor-shell mt"
-                        ></div>
+                        <div class="quill-editor-shell mt">
+                            <div id="guru-manuscript-explanation-editor"></div>
+                        </div>
                         <input
                             type="hidden"
                             name="explanation_html"
@@ -633,10 +714,9 @@
                     </section>
                     <section class="panel stimulus-editor-wrap">
                         <h4>Hint (opsional)</h4>
-                        <div
-                            id="guru-manuscript-hint-editor"
-                            class="quill-editor-shell mt"
-                        ></div>
+                        <div class="quill-editor-shell mt">
+                            <div id="guru-manuscript-hint-editor"></div>
+                        </div>
                         <input
                             type="hidden"
                             name="hint_html"
@@ -646,11 +726,20 @@
                 </form>
                 <div class="mt manuscript-submit-row">
                     <button
+                        id="guru-manuscript-submit-btn"
                         class="btn"
                         type="submit"
                         form="guru-manuscript-form"
                     >
                         Simpan Draft Naskah
+                    </button>
+                    <button
+                        id="guru-manuscript-cancel-edit-btn"
+                        class="btn btn-secondary mt"
+                        type="button"
+                        hidden
+                    >
+                        Batal Edit
                     </button>
                 </div>
 
@@ -690,28 +779,6 @@
                         Finalize Versi
                     </button>
                 </form>
-
-                <div class="table-wrap mt">
-                    <table class="bs-table">
-                        <thead>
-                            <tr>
-                                <th>QVID</th>
-                                <th>Question ID</th>
-                                <th>Version</th>
-                                <th>Stimulus ID</th>
-                                <th>Status</th>
-                                <th>Dibuat</th>
-                            </tr>
-                        </thead>
-                        <tbody id="guru-manuscript-body">
-                            <tr>
-                                <td colspan="6" class="muted">
-                                    Belum ada data versi naskah.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
             </section>
 
             <section id="guru-subjects-panel" class="panel" hidden>
@@ -798,6 +865,51 @@
         <div id="guru-stimulus-preview-content" class="box"></div>
         <div class="actions">
             <button class="btn btn-secondary" type="submit">Tutup</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-manuscript-preview-dialog" class="admin-dialog">
+    <form method="dialog" class="form-grid">
+        <h3 id="guru-manuscript-preview-title">Detail Naskah</h3>
+        <div id="guru-manuscript-preview-content" class="box"></div>
+        <div class="actions">
+            <button class="btn btn-secondary" type="submit">Tutup</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="guru-manuscript-import-dialog" class="admin-dialog">
+    <form id="guru-manuscript-import-form" class="form-grid">
+        <h3>Import Soal (CSV Word)</h3>
+        <label>
+            Mapel
+            <select
+                id="guru-manuscript-import-subject-select"
+                name="subject_id"
+                required
+            ></select>
+        </label>
+        <label>
+            File CSV/TXT
+            <input
+                id="guru-manuscript-import-file"
+                name="file"
+                type="file"
+                accept=".csv,.txt,text/csv,text/plain"
+                required
+            />
+        </label>
+        <pre id="guru-manuscript-import-output" class="box code-box"></pre>
+        <div class="actions">
+            <button
+                id="guru-manuscript-import-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn" type="submit">Import</button>
         </div>
     </form>
 </dialog>

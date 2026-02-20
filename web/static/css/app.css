@@ -510,6 +510,16 @@ textarea:focus-visible {
     flex-wrap: wrap;
 }
 
+.stimulus-filter-inline {
+    grid-template-columns: minmax(220px, 2fr) minmax(220px, 2fr) auto;
+    align-items: end;
+}
+
+.stimulus-filter-inline .btn {
+    min-height: 42px;
+    white-space: nowrap;
+}
+
 .admin-section-head h4 {
     margin: 0;
 }
@@ -709,21 +719,6 @@ textarea:focus-visible {
 #guru-stimulus-single-panel {
     margin-bottom: 12px;
     overflow: visible;
-}
-
-#guru-stimulus-single-editor .ql-toolbar.ql-snow {
-    position: relative;
-    z-index: 1;
-}
-
-#guru-stimulus-single-editor .ql-container.ql-snow {
-    height: auto !important;
-    min-height: 240px;
-}
-
-#guru-stimulus-single-editor .ql-editor {
-    min-height: 200px !important;
-    max-height: 360px !important;
 }
 
 .stimulus-submit-wrap {
@@ -1076,6 +1071,9 @@ body[data-page="guru_content"] .dashboard-hero .admin-stat-card .stat-value {
         grid-template-columns: 1fr;
     }
     .admin-grid {
+        grid-template-columns: 1fr;
+    }
+    .stimulus-filter-inline {
         grid-template-columns: 1fr;
     }
     .admin-layout {

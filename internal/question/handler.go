@@ -24,12 +24,14 @@ type Handler struct {
 
 type questionService interface {
 	CreateQuestion(ctx context.Context, in CreateQuestionInput) (*QuestionBlueprint, error)
-	ListQuestions(ctx context.Context, subjectID int64) ([]QuestionBlueprint, error)
+	ListQuestions(ctx context.Context, subjectID int64, ownerID *int64) ([]QuestionBlueprint, error)
 	CreateStimulus(ctx context.Context, in CreateStimulusInput) (*Stimulus, error)
 	ListStimuliBySubject(ctx context.Context, subjectID int64) ([]Stimulus, error)
 	UpdateStimulus(ctx context.Context, in UpdateStimulusInput) (*Stimulus, error)
 	DeleteStimulus(ctx context.Context, stimulusID int64) error
 	CreateQuestionVersion(ctx context.Context, in CreateQuestionVersionInput) (*QuestionVersion, error)
+	UpdateQuestionVersion(ctx context.Context, in UpdateQuestionVersionInput) (*QuestionVersion, error)
+	DeleteQuestionVersion(ctx context.Context, questionID int64, versionNo int) error
 	FinalizeQuestionVersion(ctx context.Context, questionID int64, versionNo int) (*QuestionVersion, error)
 	ListQuestionVersions(ctx context.Context, questionID int64) ([]QuestionVersion, error)
 	CreateQuestionParallel(ctx context.Context, in CreateQuestionParallelInput) (*QuestionParallel, error)
@@ -74,6 +76,18 @@ type createQuestionRequest struct {
 }
 
 type createQuestionVersionRequest struct {
+	StimulusID      *int64                `json:"stimulus_id"`
+	StemHTML        *string               `json:"stem_html"`
+	ExplanationHTML *string               `json:"explanation_html"`
+	HintHTML        *string               `json:"hint_html"`
+	AnswerKey       json.RawMessage       `json:"answer_key"`
+	Options         []QuestionOptionInput `json:"options"`
+	DurationSeconds *int                  `json:"duration_seconds"`
+	Weight          *float64              `json:"weight"`
+	ChangeNote      *string               `json:"change_note"`
+}
+
+type updateQuestionVersionRequest struct {
 	StimulusID      *int64                `json:"stimulus_id"`
 	StemHTML        *string               `json:"stem_html"`
 	ExplanationHTML *string               `json:"explanation_html"`
@@ -196,6 +210,12 @@ func (h *Handler) CreateQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListQuestions(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
 	var subjectID int64
 	subjectIDRaw := strings.TrimSpace(r.URL.Query().Get("subject_id"))
 	if subjectIDRaw != "" {
@@ -207,7 +227,26 @@ func (h *Handler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 		subjectID = parsed
 	}
 
-	items, err := h.svc.ListQuestions(r.Context(), subjectID)
+	ownerOnlyRaw := strings.TrimSpace(r.URL.Query().Get("owner_only"))
+	ownerOnly := false
+	if ownerOnlyRaw != "" {
+		parsed, err := strconv.ParseBool(ownerOnlyRaw)
+		if err != nil {
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "owner_only must be boolean"})
+			return
+		}
+		ownerOnly = parsed
+	} else if strings.EqualFold(strings.TrimSpace(user.Role), "guru") {
+		// Default mode guru: hanya soal milik sendiri.
+		ownerOnly = true
+	}
+
+	var ownerID *int64
+	if ownerOnly {
+		ownerID = &user.ID
+	}
+
+	items, err := h.svc.ListQuestions(r.Context(), subjectID, ownerID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidInput) {
 			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
@@ -569,6 +608,79 @@ func (h *Handler) FinalizeQuestionVersion(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: item})
+}
+
+func (h *Handler) UpdateQuestionVersion(w http.ResponseWriter, r *http.Request) {
+	questionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || questionID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid question id"})
+		return
+	}
+	versionNo, err := strconv.Atoi(chi.URLParam(r, "version"))
+	if err != nil || versionNo <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid version"})
+		return
+	}
+
+	var req updateQuestionVersionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	item, err := h.svc.UpdateQuestionVersion(r.Context(), UpdateQuestionVersionInput{
+		QuestionID:      questionID,
+		VersionNo:       versionNo,
+		StimulusID:      req.StimulusID,
+		StemHTML:        req.StemHTML,
+		ExplanationHTML: req.ExplanationHTML,
+		HintHTML:        req.HintHTML,
+		AnswerKey:       req.AnswerKey,
+		Options:         req.Options,
+		DurationSeconds: req.DurationSeconds,
+		Weight:          req.Weight,
+		ChangeNote:      req.ChangeNote,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrQuestionNotFound), errors.Is(err, ErrVersionNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		}
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: item})
+}
+
+func (h *Handler) DeleteQuestionVersion(w http.ResponseWriter, r *http.Request) {
+	questionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || questionID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid question id"})
+		return
+	}
+	versionNo, err := strconv.Atoi(chi.URLParam(r, "version"))
+	if err != nil || versionNo <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid version"})
+		return
+	}
+
+	if err := h.svc.DeleteQuestionVersion(r.Context(), questionID, versionNo); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrVersionNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		}
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: map[string]any{"deleted": true}})
 }
 
 func (h *Handler) ListQuestionVersions(w http.ResponseWriter, r *http.Request) {

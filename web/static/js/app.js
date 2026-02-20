@@ -3921,6 +3921,30 @@
     );
 
     const manuscriptForm = document.getElementById("guru-manuscript-form");
+    const manuscriptImportBtn = document.getElementById(
+      "guru-manuscript-import-btn",
+    );
+    const questionOwnerScopeSelect = document.getElementById(
+      "guru-question-owner-scope",
+    );
+    const manuscriptImportDialog = document.getElementById(
+      "guru-manuscript-import-dialog",
+    );
+    const manuscriptImportForm = document.getElementById(
+      "guru-manuscript-import-form",
+    );
+    const manuscriptImportSubjectSelect = document.getElementById(
+      "guru-manuscript-import-subject-select",
+    );
+    const manuscriptImportFileInput = document.getElementById(
+      "guru-manuscript-import-file",
+    );
+    const manuscriptImportOutput = document.getElementById(
+      "guru-manuscript-import-output",
+    );
+    const manuscriptImportCancelBtn = document.getElementById(
+      "guru-manuscript-import-cancel-btn",
+    );
     const manuscriptRefreshBtn = document.getElementById(
       "guru-manuscript-refresh-btn",
     );
@@ -3931,6 +3955,21 @@
       "guru-manuscript-finalize-form",
     );
     const manuscriptBody = document.getElementById("guru-manuscript-body");
+    const manuscriptPageSizeSelect = document.getElementById(
+      "guru-manuscript-page-size",
+    );
+    const manuscriptPrevBtn = document.getElementById(
+      "guru-manuscript-prev-btn",
+    );
+    const manuscriptNextBtn = document.getElementById(
+      "guru-manuscript-next-btn",
+    );
+    const manuscriptPageInfo = document.getElementById(
+      "guru-manuscript-page-info",
+    );
+    const manuscriptMessage = document.getElementById(
+      "guru-manuscript-message",
+    );
     const manuscriptQuestionSelect = document.getElementById(
       "guru-manuscript-question-select",
     );
@@ -3991,6 +4030,24 @@
     const manuscriptAnswerKeyRaw = document.getElementById(
       "guru-manuscript-answer-key-raw",
     );
+    const manuscriptEditingVersionNoInput = document.getElementById(
+      "guru-manuscript-editing-version-no",
+    );
+    const manuscriptSubmitBtn = document.getElementById(
+      "guru-manuscript-submit-btn",
+    );
+    const manuscriptCancelEditBtn = document.getElementById(
+      "guru-manuscript-cancel-edit-btn",
+    );
+    const manuscriptPreviewDialog = document.getElementById(
+      "guru-manuscript-preview-dialog",
+    );
+    const manuscriptPreviewTitle = document.getElementById(
+      "guru-manuscript-preview-title",
+    );
+    const manuscriptPreviewContent = document.getElementById(
+      "guru-manuscript-preview-content",
+    );
 
     const reviewDecisionDialog = document.getElementById(
       "guru-review-decision-dialog",
@@ -4019,6 +4076,11 @@
     let manuscriptHintQuill = null;
     const manuscriptOptionQuillByRow = new WeakMap();
     let currentManuscriptQuestionType = "";
+    let manuscriptVersionsCache = [];
+    let manuscriptAllItems = [];
+    let manuscriptPage = 1;
+    let manuscriptPageSize = 15;
+    let manuscriptEditingQuestionID = 0;
     let currentStimulusItems = [];
     let educationLevelsCache = [];
     let currentStimulusAllItems = [];
@@ -4030,6 +4092,20 @@
     const setMsg = function (value) {
       text(msg, value);
     };
+    const setManuscriptMsg = function (value) {
+      const message = String(value || "");
+      if (manuscriptMessage) text(manuscriptMessage, message);
+      setMsg(message);
+    };
+
+    function isOwnerOnlyQuestionsEnabled() {
+      const scope = String(
+        (questionOwnerScopeSelect && questionOwnerScopeSelect.value) || "",
+      )
+        .trim()
+        .toLowerCase();
+      return scope === "mine";
+    }
 
     async function loadEducationLevelsForGuruSubjectForm() {
       try {
@@ -4197,6 +4273,277 @@
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+    }
+
+    function decodeImportWordCSVLine(rawLine) {
+      const line = String(rawLine == null ? "" : rawLine).trim();
+      if (!line) return "";
+      if (line.startsWith('"') && line.endsWith('"') && line.length >= 2) {
+        return line.slice(1, -1).replaceAll('""', '"').trim();
+      }
+      return line.trim();
+    }
+
+    function parseImportWordBlocks(rawText) {
+      const lines = String(rawText || "")
+        .split(/\r?\n/)
+        .map(function (line) {
+          return decodeImportWordCSVLine(line);
+        });
+      const blocks = [];
+      let current = [];
+      lines.forEach(function (line, idx) {
+        const clean = String(line || "").trim();
+        if (!clean) return;
+        if (idx === 0 && clean.toLowerCase() === "content") return;
+        if (/^type\s*:/i.test(clean) && current.length) {
+          blocks.push(current);
+          current = [];
+        }
+        current.push(clean);
+      });
+      if (current.length) blocks.push(current);
+      return blocks;
+    }
+
+    function mapImportQuestionType(rawType) {
+      const t = String(rawType || "")
+        .trim()
+        .toUpperCase();
+      if (t === "MC") return "pg_tunggal";
+      if (t === "MR") return "multi_jawaban";
+      if (t === "TF") return "benar_salah_pernyataan";
+      return "";
+    }
+
+    function normalizeTextKey(raw) {
+      return String(raw || "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&#39;/gi, "'")
+        .replace(/&quot;/gi, '"')
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    }
+
+    function buildAutoStimulusTitle(blockNo, qType) {
+      const now = new Date();
+      const pad = function (n) {
+        return String(n).padStart(2, "0");
+      };
+      const stamp =
+        String(now.getFullYear()) +
+        pad(now.getMonth() + 1) +
+        pad(now.getDate()) +
+        "_" +
+        pad(now.getHours()) +
+        pad(now.getMinutes());
+      const t = String(qType || "")
+        .trim()
+        .toUpperCase();
+      return (
+        "Stimulus Import " +
+        stamp +
+        " [" +
+        (t || "SOAL") +
+        "] #" +
+        String(blockNo)
+      ).slice(0, 200);
+    }
+
+    function readStimulusBodyText(stimulusItem) {
+      const content = stimulusItem && stimulusItem.content;
+      if (!content || typeof content !== "object") return "";
+      return String(content.body || "").trim();
+    }
+
+    function parseImportQuestionBlock(lines, blockNo) {
+      const item = {
+        type_raw: "",
+        question_type: "",
+        stimulus: "",
+        question: "",
+        options: [],
+        statements: [],
+        key_raw: "",
+      };
+      (Array.isArray(lines) ? lines : []).forEach(function (line) {
+        const m = String(line || "").match(/^([A-Za-z0-9_]+)\s*:\s*(.*)$/);
+        if (!m) return;
+        const key = String(m[1] || "")
+          .trim()
+          .toUpperCase();
+        const val = String(m[2] || "").trim();
+        if (!key) return;
+        if (key === "TYPE") {
+          item.type_raw = val;
+          item.question_type = mapImportQuestionType(val);
+          return;
+        }
+        if (key === "S" || key === "STIMULUS") {
+          item.stimulus = val;
+          return;
+        }
+        if (key === "Q") {
+          item.question = val;
+          return;
+        }
+        if (key === "KUNCI") {
+          item.key_raw = val;
+          return;
+        }
+        if (/^[A-Z]$/.test(key)) {
+          item.options.push({ option_key: key, option_html: val });
+          return;
+        }
+        if (/^P[0-9]+$/.test(key)) {
+          item.statements.push({ id: key, statement: val });
+        }
+      });
+
+      if (!item.question_type) {
+        throw new Error("Blok " + String(blockNo) + ": TYPE harus MC/MR/TF.");
+      }
+      if (!item.question) {
+        throw new Error("Blok " + String(blockNo) + ": Q wajib diisi.");
+      }
+      if (!item.key_raw) {
+        throw new Error("Blok " + String(blockNo) + ": Kunci wajib diisi.");
+      }
+
+      let answerKey = {};
+      let optionsPayload = [];
+      if (item.question_type === "pg_tunggal") {
+        optionsPayload = item.options
+          .map(function (it) {
+            return {
+              option_key: String((it && it.option_key) || "")
+                .trim()
+                .toUpperCase(),
+              option_html: String((it && it.option_html) || "").trim(),
+            };
+          })
+          .filter(function (it) {
+            return it.option_key && it.option_html;
+          });
+        if (optionsPayload.length < 2) {
+          throw new Error(
+            "Blok " + String(blockNo) + ": soal MC minimal 2 opsi.",
+          );
+        }
+        const correct = String(item.key_raw || "")
+          .split(",")[0]
+          .trim()
+          .toUpperCase();
+        if (!correct) {
+          throw new Error(
+            "Blok " + String(blockNo) + ": kunci MC tidak valid.",
+          );
+        }
+        answerKey = { correct: correct };
+      } else if (item.question_type === "multi_jawaban") {
+        optionsPayload = item.options
+          .map(function (it) {
+            return {
+              option_key: String((it && it.option_key) || "")
+                .trim()
+                .toUpperCase(),
+              option_html: String((it && it.option_html) || "").trim(),
+            };
+          })
+          .filter(function (it) {
+            return it.option_key && it.option_html;
+          });
+        if (optionsPayload.length < 2) {
+          throw new Error(
+            "Blok " + String(blockNo) + ": soal MR minimal 2 opsi.",
+          );
+        }
+        const keys = String(item.key_raw || "")
+          .split(",")
+          .map(function (v) {
+            return String(v || "")
+              .trim()
+              .toUpperCase();
+          })
+          .filter(Boolean);
+        if (!keys.length) {
+          throw new Error(
+            "Blok " + String(blockNo) + ": kunci MR tidak valid.",
+          );
+        }
+        answerKey = { correct: keys, mode: "exact" };
+      } else {
+        const statements = item.statements
+          .map(function (it) {
+            return {
+              id: String((it && it.id) || "")
+                .trim()
+                .toUpperCase(),
+              statement: String((it && it.statement) || "").trim(),
+            };
+          })
+          .filter(function (it) {
+            return it.id && it.statement;
+          });
+        if (!statements.length) {
+          throw new Error(
+            "Blok " + String(blockNo) + ": soal TF butuh P1/P2/P3...",
+          );
+        }
+        const keys = String(item.key_raw || "")
+          .split(",")
+          .map(function (v) {
+            return String(v || "")
+              .trim()
+              .toUpperCase();
+          })
+          .filter(Boolean);
+        if (keys.length !== statements.length) {
+          throw new Error(
+            "Blok " +
+              String(blockNo) +
+              ": jumlah Kunci TF harus sama dengan jumlah pernyataan.",
+          );
+        }
+        answerKey = {
+          statements: statements.map(function (st, idx) {
+            const flag = keys[idx];
+            if (flag !== "T" && flag !== "F") {
+              throw new Error(
+                "Blok " +
+                  String(blockNo) +
+                  ": nilai Kunci TF harus T/F (contoh: T, F, T).",
+              );
+            }
+            return {
+              id: st.id,
+              statement: st.statement,
+              correct: flag === "T",
+            };
+          }),
+        };
+      }
+
+      const safeQuestion = escapeHtml(item.question || "");
+      const stemHTML = "<p>" + safeQuestion + "</p>";
+      const title = String(item.question || "").slice(0, 180);
+      return {
+        question_type: item.question_type,
+        title: title || "Import Soal",
+        indicator: "Import Soal CSV Word",
+        material: item.stimulus || "Import Soal",
+        objective: "Import otomatis dari CSV Word",
+        cognitive_level: "C2",
+        stimulus_text: String(item.stimulus || "").trim(),
+        stem_html: stemHTML,
+        answer_key: answerKey,
+        options: optionsPayload,
+      };
     }
 
     async function loadScriptOnce(id, src) {
@@ -4671,6 +5018,211 @@
       syncManuscriptAnswerKeyPreview();
     }
 
+    function setManuscriptEditMode(questionID, versionNo) {
+      manuscriptEditingQuestionID = Number(questionID || 0);
+      if (manuscriptEditingVersionNoInput) {
+        manuscriptEditingVersionNoInput.value = String(versionNo || "");
+      }
+      if (manuscriptSubmitBtn) {
+        manuscriptSubmitBtn.textContent =
+          "Simpan Perubahan Draft (v" + String(versionNo || "") + ")";
+      }
+      if (manuscriptCancelEditBtn) {
+        manuscriptCancelEditBtn.hidden = false;
+      }
+    }
+
+    function clearManuscriptEditMode() {
+      manuscriptEditingQuestionID = 0;
+      if (manuscriptEditingVersionNoInput)
+        manuscriptEditingVersionNoInput.value = "";
+      if (manuscriptSubmitBtn)
+        manuscriptSubmitBtn.textContent = "Simpan Draft Naskah";
+      if (manuscriptCancelEditBtn) manuscriptCancelEditBtn.hidden = true;
+    }
+
+    function setQuillHTMLValue(quill, htmlValue) {
+      if (!quill) return;
+      quill.setContents([]);
+      const value = String(htmlValue || "").trim();
+      if (value) quill.clipboard.dangerouslyPasteHTML(value);
+    }
+
+    function parseAnswerKeyObject(raw) {
+      if (!raw) return {};
+      if (typeof raw === "object") return raw;
+      try {
+        return JSON.parse(String(raw || "{}"));
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function renderManuscriptOptionsFromData(options) {
+      if (!manuscriptOptionsWrap) return;
+      const list = Array.isArray(options) ? options : [];
+      if (!list.length) {
+        ensureManuscriptOptionRows();
+        return;
+      }
+      manuscriptOptionsWrap.innerHTML = list
+        .map(function (it, idx) {
+          return createManuscriptOptionRow(it || {}, idx);
+        })
+        .join("");
+      bindManuscriptOptionEditors();
+    }
+
+    function renderTFStatementsFromData(statements) {
+      if (!manuscriptStatementsWrap) return;
+      const list = Array.isArray(statements) ? statements : [];
+      if (!list.length) {
+        ensureTFStatementRows();
+        return;
+      }
+      manuscriptStatementsWrap.innerHTML = list
+        .map(function (it, idx) {
+          return createTFStatementRow(it || {}, idx);
+        })
+        .join("");
+    }
+
+    function applyAnswerKeyToManuscriptUI(answerKeyObj) {
+      const qType = String(currentManuscriptQuestionType || "").toLowerCase();
+      const key =
+        answerKeyObj && typeof answerKeyObj === "object" ? answerKeyObj : {};
+      if (qType === "pg_tunggal") {
+        renderManuscriptKeyChoices();
+        const correct = String(key.correct || "")
+          .trim()
+          .toUpperCase();
+        const target = manuscriptKeyMCOptions
+          ? manuscriptKeyMCOptions.querySelector(
+              'input[name="manuscript_mc_key"][value="' + correct + '"]',
+            )
+          : null;
+        if (target) target.checked = true;
+      } else if (qType === "multi_jawaban") {
+        renderManuscriptKeyChoices();
+        const correctKeys = Array.isArray(key.correct)
+          ? key.correct
+              .map(function (it) {
+                return String(it || "")
+                  .trim()
+                  .toUpperCase();
+              })
+              .filter(Boolean)
+          : [];
+        if (manuscriptKeyMROptions) {
+          manuscriptKeyMROptions
+            .querySelectorAll('input[name="manuscript_mr_key"]')
+            .forEach(function (el) {
+              el.checked = correctKeys.includes(
+                String(el.value || "")
+                  .trim()
+                  .toUpperCase(),
+              );
+            });
+        }
+      } else if (qType === "benar_salah_pernyataan") {
+        renderTFStatementsFromData(
+          Array.isArray(key.statements) ? key.statements : [],
+        );
+      }
+      syncManuscriptAnswerKeyPreview();
+    }
+
+    async function beginManuscriptEdit(item) {
+      if (!item || !manuscriptForm) return;
+      const questionID = Number(item.question_id || 0);
+      const versionNo = Number(item.version_no || 0);
+      if (questionID <= 0 || versionNo <= 0) return;
+
+      if (manuscriptQuestionSelect) {
+        manuscriptQuestionSelect.value = String(questionID);
+      }
+      applyManuscriptTypeUI(true);
+      await refreshStimuliSelectByQuestion();
+
+      if (manuscriptStimulusSelect) {
+        manuscriptStimulusSelect.value = String(Number(item.stimulus_id || 0));
+      }
+      setQuillHTMLValue(manuscriptStemQuill, item.stem_html);
+      setQuillHTMLValue(manuscriptExplanationQuill, item.explanation_html);
+      setQuillHTMLValue(manuscriptHintQuill, item.hint_html);
+      syncManuscriptHiddenInputs();
+
+      const keyObj = parseAnswerKeyObject(item.answer_key);
+      if (currentManuscriptQuestionType === "benar_salah_pernyataan") {
+        renderTFStatementsFromData(keyObj.statements);
+      } else {
+        renderManuscriptOptionsFromData(item.options);
+      }
+      applyManuscriptTypeUI(false);
+      applyAnswerKeyToManuscriptUI(keyObj);
+
+      setManuscriptEditMode(questionID, versionNo);
+      manuscriptForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function previewManuscriptVersion(item) {
+      if (!item || !manuscriptPreviewContent) return;
+      const keyObj = parseAnswerKeyObject(item.answer_key);
+      const safeJSON = escapeHtml(JSON.stringify(keyObj, null, 2));
+      const stem = String(item.stem_html || "").trim();
+      const explanation = String(item.explanation_html || "").trim();
+      const hint = String(item.hint_html || "").trim();
+      const options = Array.isArray(item.options) ? item.options : [];
+      const optionsHTML = options.length
+        ? options
+            .map(function (it) {
+              return (
+                '<div class="mt"><strong>' +
+                escapeHtml(String((it && it.option_key) || "")) +
+                "</strong><div>" +
+                String((it && it.option_html) || "") +
+                "</div></div>"
+              );
+            })
+            .join("")
+        : '<div class="muted">Tidak ada opsi tersimpan.</div>';
+      if (manuscriptPreviewTitle) {
+        text(
+          manuscriptPreviewTitle,
+          "Detail Naskah Q" +
+            String(item.question_id || "-") +
+            " v" +
+            String(item.version_no || "-"),
+        );
+      }
+      manuscriptPreviewContent.innerHTML = [
+        "<div><strong>Status:</strong> " +
+          escapeHtml(String(item.status || "")) +
+          "</div>",
+        '<div class="mt"><strong>Stem:</strong><div class="box mt">' +
+          (stem || '<span class="muted">(kosong)</span>') +
+          "</div></div>",
+        '<div class="mt"><strong>Penjelasan:</strong><div class="box mt">' +
+          (explanation || '<span class="muted">(kosong)</span>') +
+          "</div></div>",
+        '<div class="mt"><strong>Hint:</strong><div class="box mt">' +
+          (hint || '<span class="muted">(kosong)</span>') +
+          "</div></div>",
+        '<div class="mt"><strong>Opsi:</strong><div class="box mt">' +
+          optionsHTML +
+          "</div></div>",
+        '<div class="mt"><strong>Answer Key:</strong><pre class="code-box">' +
+          safeJSON +
+          "</pre></div>",
+      ].join("");
+      if (
+        manuscriptPreviewDialog &&
+        typeof manuscriptPreviewDialog.showModal === "function"
+      ) {
+        manuscriptPreviewDialog.showModal();
+      }
+    }
+
     function isBlankHTML(value) {
       const raw = String(value || "").trim();
       if (!raw) return true;
@@ -4862,12 +5414,53 @@
         selectEl.appendChild(opt);
       });
       if (
-        selectEl === manuscriptQuestionSelect &&
+        (selectEl === manuscriptQuestionSelect ||
+          selectEl === manuscriptListQuestionSelect ||
+          selectEl === manuscriptFinalizeQuestionSelect) &&
         !selectEl.value &&
         selectEl.options.length > 1
       ) {
         selectEl.selectedIndex = 1;
       }
+    }
+
+    async function loadAllManuscriptVersionsFromBlueprints() {
+      const qids = Array.from(
+        new Set(
+          (Array.isArray(blueprintsCache) ? blueprintsCache : [])
+            .map(function (it) {
+              return Number((it && it.id) || 0);
+            })
+            .filter(function (v) {
+              return v > 0;
+            }),
+        ),
+      );
+      if (!qids.length) return [];
+      const settled = await Promise.allSettled(
+        qids.map(function (qid) {
+          return api("/api/v1/questions/" + qid + "/versions", "GET");
+        }),
+      );
+      return settled
+        .map(function (it) {
+          return it && it.status === "fulfilled" ? it.value : [];
+        })
+        .reduce(function (acc, rows) {
+          if (Array.isArray(rows)) return acc.concat(rows);
+          return acc;
+        }, [])
+        .sort(function (a, b) {
+          const ta = new Date(a && a.created_at ? a.created_at : 0).getTime();
+          const tb = new Date(b && b.created_at ? b.created_at : 0).getTime();
+          if (tb !== ta) return tb - ta;
+          const qa = Number((a && a.question_id) || 0);
+          const qb = Number((b && b.question_id) || 0);
+          if (qb !== qa) return qb - qa;
+          return (
+            Number((b && b.version_no) || 0) - Number((a && a.version_no) || 0)
+          );
+        });
     }
 
     function fillStimulusSelect(selectEl, items) {
@@ -5044,11 +5637,11 @@
         stimulusNextBtn.disabled = stimulusListPage >= totalPages;
     }
 
-    function renderManuscripts(items) {
+    function renderManuscriptRows(items) {
       if (!manuscriptBody) return;
       if (!Array.isArray(items) || items.length === 0) {
         manuscriptBody.innerHTML =
-          '<tr><td colspan="6" class="muted">Belum ada data versi naskah.</td></tr>';
+          '<tr><td colspan="7" class="muted">Belum ada data versi naskah.</td></tr>';
         return;
       }
       manuscriptBody.innerHTML = "";
@@ -5062,8 +5655,310 @@
           "<td>" + escapeHtml(String(it.status || "")) + "</td>",
           "<td>" + escapeHtml(fmtDate(it.created_at)) + "</td>",
         ].join("");
+
+        const tdAction = document.createElement("td");
+        const actionWrap = document.createElement("span");
+        actionWrap.className = "action-icons";
+        const qid = Number((it && it.question_id) || 0);
+        const ver = Number((it && it.version_no) || 0);
+        const iconMap = {
+          "preview-manuscript":
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+          "edit-manuscript":
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25z"/><path d="M14.05 6.2l3.75 3.75"/></svg>',
+          "delete-manuscript":
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>',
+          "finalize-manuscript":
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M20 6L9 17l-5-5"/></svg>',
+        };
+        [
+          { action: "preview-manuscript", title: "Lihat", danger: false },
+          { action: "edit-manuscript", title: "Ubah", danger: false },
+          { action: "delete-manuscript", title: "Hapus", danger: true },
+          { action: "finalize-manuscript", title: "Finalize", danger: false },
+        ].forEach(function (cfg) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = cfg.danger ? "icon-only-btn danger" : "icon-only-btn";
+          btn.setAttribute("data-action", cfg.action);
+          btn.setAttribute("data-question-id", String(qid));
+          btn.setAttribute("data-version-no", String(ver));
+          btn.setAttribute("title", cfg.title);
+          btn.setAttribute("aria-label", cfg.title);
+          btn.innerHTML = iconMap[cfg.action] || "";
+          actionWrap.appendChild(btn);
+        });
+        tdAction.appendChild(actionWrap);
+        tr.appendChild(tdAction);
         manuscriptBody.appendChild(tr);
       });
+    }
+
+    function updateManuscriptPaginationInfo(totalRows, pageRows) {
+      if (!manuscriptPageInfo) return;
+      if (totalRows <= 0 || pageRows <= 0) {
+        manuscriptPageInfo.textContent = "Baris 0 - 0";
+        return;
+      }
+      const from = (manuscriptPage - 1) * manuscriptPageSize + 1;
+      const to = from + pageRows - 1;
+      manuscriptPageInfo.textContent =
+        "Baris " +
+        String(from) +
+        " - " +
+        String(to) +
+        " dari " +
+        String(totalRows);
+    }
+
+    function renderManuscripts(items) {
+      if (!manuscriptBody) return;
+      manuscriptAllItems = Array.isArray(items) ? items.slice() : [];
+      manuscriptVersionsCache = manuscriptAllItems.slice();
+      const total = manuscriptAllItems.length;
+      const totalPages = Math.max(
+        1,
+        Math.ceil(total / Math.max(1, manuscriptPageSize)),
+      );
+      if (manuscriptPage > totalPages) manuscriptPage = totalPages;
+      if (manuscriptPage < 1) manuscriptPage = 1;
+      const start = (manuscriptPage - 1) * manuscriptPageSize;
+      const pageRows = manuscriptAllItems.slice(
+        start,
+        start + manuscriptPageSize,
+      );
+      renderManuscriptRows(pageRows);
+      updateManuscriptPaginationInfo(total, pageRows.length);
+      if (manuscriptPrevBtn) manuscriptPrevBtn.disabled = manuscriptPage <= 1;
+      if (manuscriptNextBtn)
+        manuscriptNextBtn.disabled = manuscriptPage >= totalPages;
+    }
+
+    async function reloadManuscriptsByCurrentTableScope(fallbackQuestionID) {
+      const questionIDs = Array.from(
+        new Set(
+          (Array.isArray(manuscriptVersionsCache)
+            ? manuscriptVersionsCache
+            : []
+          )
+            .map(function (it) {
+              return Number((it && it.question_id) || 0);
+            })
+            .filter(function (v) {
+              return v > 0;
+            }),
+        ),
+      );
+      if (!questionIDs.length) {
+        const qid = Number(
+          fallbackQuestionID ||
+            (manuscriptListQuestionSelect &&
+              manuscriptListQuestionSelect.value) ||
+            0,
+        );
+        if (qid <= 0) {
+          renderManuscripts([]);
+          return;
+        }
+        const one = await api("/api/v1/questions/" + qid + "/versions", "GET");
+        renderManuscripts(Array.isArray(one) ? one : []);
+        return;
+      }
+      const settled = await Promise.allSettled(
+        questionIDs.map(function (qid) {
+          return api("/api/v1/questions/" + qid + "/versions", "GET");
+        }),
+      );
+      const merged = settled
+        .map(function (it) {
+          return it && it.status === "fulfilled" ? it.value : [];
+        })
+        .reduce(function (acc, rows) {
+          if (Array.isArray(rows)) return acc.concat(rows);
+          return acc;
+        }, [])
+        .sort(function (a, b) {
+          const ta = new Date(a && a.created_at ? a.created_at : 0).getTime();
+          const tb = new Date(b && b.created_at ? b.created_at : 0).getTime();
+          if (tb !== ta) return tb - ta;
+          const qa = Number((a && a.question_id) || 0);
+          const qb = Number((b && b.question_id) || 0);
+          if (qb !== qa) return qb - qa;
+          return (
+            Number((b && b.version_no) || 0) - Number((a && a.version_no) || 0)
+          );
+        });
+      renderManuscripts(merged);
+    }
+
+    async function findManuscriptItemByKey(questionID, versionNo) {
+      const qid = Number(questionID || 0);
+      const ver = Number(versionNo || 0);
+      if (qid <= 0 || ver <= 0) return null;
+      const fromCache = (
+        Array.isArray(manuscriptVersionsCache) ? manuscriptVersionsCache : []
+      ).find(function (it) {
+        return (
+          Number((it && it.question_id) || 0) === qid &&
+          Number((it && it.version_no) || 0) === ver
+        );
+      });
+      if (fromCache) return fromCache;
+      const rows = await api("/api/v1/questions/" + qid + "/versions", "GET");
+      const list = Array.isArray(rows) ? rows : [];
+      const found = list.find(function (it) {
+        return Number((it && it.version_no) || 0) === ver;
+      });
+      if (found) {
+        manuscriptVersionsCache = Array.isArray(manuscriptVersionsCache)
+          ? manuscriptVersionsCache.concat([found])
+          : [found];
+        return found;
+      }
+      return null;
+    }
+
+    async function runManuscriptRowAction(btn, action, questionID, versionNo) {
+      let item = null;
+      try {
+        item = await findManuscriptItemByKey(questionID, versionNo);
+      } catch (err) {
+        setManuscriptMsg(
+          "Gagal memuat data naskah Question " +
+            String(questionID) +
+            " versi " +
+            String(versionNo) +
+            ": " +
+            String((err && err.message) || "request error"),
+        );
+        return;
+      }
+      if (!item) {
+        setManuscriptMsg(
+          "Data naskah untuk Question " +
+            String(questionID) +
+            " versi " +
+            String(versionNo) +
+            " tidak ditemukan.",
+        );
+        return;
+      }
+
+      if (action === "preview-manuscript") {
+        previewManuscriptVersion(item);
+        return;
+      }
+      if (action === "edit-manuscript") {
+        const status = String(item.status || "")
+          .trim()
+          .toLowerCase();
+        if (!(status === "draft" || status === "revisi")) {
+          setManuscriptMsg(
+            "Versi final tidak bisa diedit. Buat draft baru untuk revisi.",
+          );
+          return;
+        }
+        const done = beginBusy(btn, msg, "Memuat naskah ke editor...");
+        try {
+          await beginManuscriptEdit(item);
+          setManuscriptMsg(
+            "Mode edit aktif untuk Question " +
+              String(questionID) +
+              " versi " +
+              String(versionNo) +
+              ".",
+          );
+        } catch (err) {
+          setManuscriptMsg("Gagal memuat naskah untuk edit: " + err.message);
+        } finally {
+          done();
+        }
+        return;
+      }
+      if (action === "delete-manuscript") {
+        const status = String(item.status || "")
+          .trim()
+          .toLowerCase();
+        if (!(status === "draft" || status === "revisi")) {
+          setManuscriptMsg("Versi final tidak bisa dihapus.");
+          return;
+        }
+        const ok = window.confirm(
+          "Hapus draft naskah versi " +
+            String(versionNo) +
+            " untuk Question " +
+            String(questionID) +
+            "?",
+        );
+        if (!ok) return;
+        const done = beginBusy(btn, msg, "Menghapus draft naskah...");
+        try {
+          await api(
+            "/api/v1/questions/" + questionID + "/versions/" + versionNo,
+            "DELETE",
+          );
+          if (
+            manuscriptEditingQuestionID === questionID &&
+            Number(
+              (manuscriptEditingVersionNoInput &&
+                manuscriptEditingVersionNoInput.value) ||
+                0,
+            ) === versionNo
+          ) {
+            clearManuscriptEditMode();
+            manuscriptForm && manuscriptForm.reset();
+            resetManuscriptEditors();
+          }
+          await reloadManuscriptsByCurrentTableScope(questionID);
+          setManuscriptMsg("Draft naskah berhasil dihapus.");
+        } catch (err) {
+          setManuscriptMsg("Hapus draft naskah gagal: " + err.message);
+        } finally {
+          done();
+        }
+        return;
+      }
+      if (action === "finalize-manuscript") {
+        const status = String(item.status || "")
+          .trim()
+          .toLowerCase();
+        if (!(status === "draft" || status === "revisi")) {
+          setManuscriptMsg("Versi ini sudah final.");
+          return;
+        }
+        const ok = window.confirm(
+          "Finalize naskah versi " +
+            String(versionNo) +
+            " untuk Question " +
+            String(questionID) +
+            "?",
+        );
+        if (!ok) return;
+        const done = beginBusy(btn, msg, "Memfinalisasi versi naskah...");
+        try {
+          await api(
+            "/api/v1/questions/" +
+              questionID +
+              "/versions/" +
+              versionNo +
+              "/finalize",
+            "POST",
+          );
+          if (manuscriptFinalizeQuestionSelect) {
+            manuscriptFinalizeQuestionSelect.value = String(questionID);
+          }
+          const versionInput =
+            manuscriptFinalizeForm &&
+            manuscriptFinalizeForm.elements.namedItem("version_no");
+          if (versionInput) versionInput.value = String(versionNo);
+          await reloadManuscriptsByCurrentTableScope(questionID);
+          setManuscriptMsg("Versi naskah berhasil difinalkan.");
+        } catch (err) {
+          setManuscriptMsg("Finalize naskah gagal: " + err.message);
+        } finally {
+          done();
+        }
+      }
     }
 
     async function loadSubjects() {
@@ -5122,7 +6017,13 @@
 
     async function loadBlueprints(subjectID) {
       const id = Number(subjectID || 0);
-      const qs = id > 0 ? "?subject_id=" + encodeURIComponent(String(id)) : "";
+      const params = new URLSearchParams();
+      if (id > 0) params.set("subject_id", String(id));
+      params.set(
+        "owner_only",
+        isOwnerOnlyQuestionsEnabled() ? "true" : "false",
+      );
+      const qs = params.toString() ? "?" + params.toString() : "";
       const items = await api("/api/v1/questions" + qs, "GET");
       blueprintsCache = Array.isArray(items) ? items : [];
       renderBlueprints(blueprintsCache);
@@ -5296,6 +6197,12 @@
         ),
         loadStimuliTable(defaultSubjectID),
       ]);
+      try {
+        const initialVersions = await loadAllManuscriptVersionsFromBlueprints();
+        renderManuscripts(initialVersions);
+      } catch (_) {
+        renderManuscripts([]);
+      }
       await refreshStimuliSelectByQuestion();
       fillSubjectEducationLevelSelect("");
     }
@@ -5319,6 +6226,18 @@
           1,
           Number(stimulusPageSizeSelect.value) || 10,
         );
+      }
+      if (manuscriptPageSizeSelect) {
+        manuscriptPageSize = Math.max(
+          1,
+          Number(manuscriptPageSizeSelect.value) || 15,
+        );
+      }
+      if (questionOwnerScopeSelect) {
+        const role = String((user && user.role) || "")
+          .trim()
+          .toLowerCase();
+        questionOwnerScopeSelect.value = role === "admin" ? "all" : "mine";
       }
       if (manuscriptStemEditor && !manuscriptStemQuill) {
         manuscriptStemQuill = createQuillEditor(
@@ -5928,6 +6847,7 @@
 
     if (manuscriptQuestionSelect) {
       manuscriptQuestionSelect.addEventListener("change", async function () {
+        clearManuscriptEditMode();
         applyManuscriptTypeUI(true);
         try {
           await refreshStimuliSelectByQuestion();
@@ -6042,11 +6962,281 @@
       });
     }
 
+    if (manuscriptImportBtn) {
+      manuscriptImportBtn.addEventListener("click", function () {
+        fillSubjectSelect(manuscriptImportSubjectSelect, false);
+        if (manuscriptImportForm) manuscriptImportForm.reset();
+        if (manuscriptImportOutput) {
+          manuscriptImportOutput.textContent =
+            "Gunakan format TYPE / Stimulus / Q / Opsi / Kunci.";
+        }
+        if (
+          manuscriptImportDialog &&
+          typeof manuscriptImportDialog.showModal === "function"
+        ) {
+          manuscriptImportDialog.showModal();
+        }
+      });
+    }
+
+    if (manuscriptImportCancelBtn) {
+      manuscriptImportCancelBtn.addEventListener("click", function () {
+        if (
+          manuscriptImportDialog &&
+          typeof manuscriptImportDialog.close === "function"
+        ) {
+          manuscriptImportDialog.close();
+        }
+      });
+    }
+
+    if (manuscriptImportForm) {
+      manuscriptImportForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const subjectID = Number(
+          (manuscriptImportSubjectSelect &&
+            manuscriptImportSubjectSelect.value) ||
+            0,
+        );
+        const file =
+          manuscriptImportFileInput &&
+          manuscriptImportFileInput.files &&
+          manuscriptImportFileInput.files[0];
+        if (subjectID <= 0) {
+          setMsg("Mapel import soal wajib dipilih.");
+          return;
+        }
+        if (!file) {
+          setMsg("Pilih file CSV/TXT untuk import soal.");
+          return;
+        }
+        const done = beginBusy(
+          manuscriptImportForm,
+          msg,
+          "Mengimpor soal dari CSV Word...",
+        );
+        try {
+          const rawText = await file.text();
+          const blocks = parseImportWordBlocks(rawText);
+          if (!blocks.length) {
+            throw new Error("File tidak berisi blok soal yang valid.");
+          }
+          const report = {
+            total_blocks: blocks.length,
+            success_blocks: 0,
+            failed_blocks: 0,
+            errors: [],
+            imported_question_ids: [],
+          };
+          const knownStimuli = await ensureStimuliBySubject(subjectID);
+          const stimulusByKey = {};
+          knownStimuli.forEach(function (it) {
+            if (String((it && it.stimulus_type) || "") !== "single") return;
+            const key = normalizeTextKey(readStimulusBodyText(it));
+            if (!key) return;
+            if (!stimulusByKey[key]) stimulusByKey[key] = it;
+          });
+          for (let i = 0; i < blocks.length; i += 1) {
+            const blockNo = i + 1;
+            try {
+              const parsed = parseImportQuestionBlock(blocks[i], blockNo);
+              let stimulusID = null;
+              if (parsed.stimulus_text) {
+                const stimulusKey = normalizeTextKey(parsed.stimulus_text);
+                const existingStimulus =
+                  stimulusKey && stimulusByKey[stimulusKey]
+                    ? stimulusByKey[stimulusKey]
+                    : null;
+                if (existingStimulus && Number(existingStimulus.id || 0) > 0) {
+                  stimulusID = Number(existingStimulus.id || 0);
+                } else {
+                  const labelMap = {
+                    pg_tunggal: "MC",
+                    multi_jawaban: "MR",
+                    benar_salah_pernyataan: "TF",
+                  };
+                  const autoTitle = buildAutoStimulusTitle(
+                    blockNo,
+                    labelMap[parsed.question_type] || "",
+                  );
+                  const safeStimulus = escapeHtml(parsed.stimulus_text);
+                  const stim = await api("/api/v1/stimuli", "POST", {
+                    subject_id: subjectID,
+                    title: autoTitle,
+                    stimulus_type: "single",
+                    content: { body: "<p>" + safeStimulus + "</p>" },
+                  });
+                  const sid = Number((stim && stim.id) || 0);
+                  if (sid > 0) {
+                    stimulusID = sid;
+                    if (stimulusKey) stimulusByKey[stimulusKey] = stim;
+                  }
+                }
+              }
+              const blueprint = await api("/api/v1/questions", "POST", {
+                subject_id: subjectID,
+                question_type: parsed.question_type,
+                title: parsed.title,
+                indicator: parsed.indicator,
+                material: parsed.material,
+                objective: parsed.objective,
+                cognitive_level: parsed.cognitive_level,
+              });
+              const qid = Number((blueprint && blueprint.id) || 0);
+              if (qid <= 0) {
+                throw new Error("gagal membuat kisi-kisi/soal.");
+              }
+              await api("/api/v1/questions/" + qid + "/versions", "POST", {
+                stimulus_id: stimulusID,
+                stem_html: parsed.stem_html,
+                answer_key: parsed.answer_key,
+                options: parsed.options,
+              });
+              report.success_blocks += 1;
+              report.imported_question_ids.push(qid);
+            } catch (err) {
+              report.failed_blocks += 1;
+              report.errors.push({
+                block: blockNo,
+                error: String((err && err.message) || "error tidak diketahui"),
+              });
+            }
+          }
+          if (manuscriptImportOutput) {
+            manuscriptImportOutput.textContent = JSON.stringify(
+              report,
+              null,
+              2,
+            );
+          }
+          await Promise.all([
+            loadBlueprints(subjectID),
+            loadReviewStats(),
+            loadStimuliTable(subjectID),
+          ]);
+          if (
+            manuscriptImportDialog &&
+            typeof manuscriptImportDialog.close === "function"
+          ) {
+            manuscriptImportDialog.close();
+          }
+          if (manuscriptImportForm) manuscriptImportForm.reset();
+          const importedQuestionIDs = Array.from(
+            new Set(
+              (Array.isArray(report.imported_question_ids)
+                ? report.imported_question_ids
+                : []
+              )
+                .map(function (v) {
+                  return Number(v || 0);
+                })
+                .filter(function (v) {
+                  return v > 0;
+                }),
+            ),
+          );
+          if (importedQuestionIDs.length) {
+            const batches = await Promise.all(
+              importedQuestionIDs.map(function (qid) {
+                return api("/api/v1/questions/" + qid + "/versions", "GET");
+              }),
+            );
+            const mergedVersions = batches
+              .reduce(function (acc, items) {
+                if (Array.isArray(items)) return acc.concat(items);
+                return acc;
+              }, [])
+              .sort(function (a, b) {
+                const ta = new Date(
+                  a && a.created_at ? a.created_at : 0,
+                ).getTime();
+                const tb = new Date(
+                  b && b.created_at ? b.created_at : 0,
+                ).getTime();
+                if (tb !== ta) return tb - ta;
+                const qa = Number((a && a.question_id) || 0);
+                const qb = Number((b && b.question_id) || 0);
+                if (qb !== qa) return qb - qa;
+                return (
+                  Number((b && b.version_no) || 0) -
+                  Number((a && a.version_no) || 0)
+                );
+              });
+            renderManuscripts(mergedVersions);
+            if (manuscriptListQuestionSelect) {
+              manuscriptListQuestionSelect.value = String(
+                importedQuestionIDs[0],
+              );
+            }
+            if (manuscriptFinalizeQuestionSelect) {
+              manuscriptFinalizeQuestionSelect.value = String(
+                importedQuestionIDs[0],
+              );
+            }
+            if (!mergedVersions.length && manuscriptListQuestionSelect) {
+              const fallbackQID = Number(
+                manuscriptListQuestionSelect.value || 0,
+              );
+              if (fallbackQID > 0) {
+                const fallbackVersions = await api(
+                  "/api/v1/questions/" + fallbackQID + "/versions",
+                  "GET",
+                );
+                renderManuscripts(
+                  Array.isArray(fallbackVersions) ? fallbackVersions : [],
+                );
+              }
+            }
+          }
+          const maxErrorPreview = 8;
+          const errorPreview = report.errors.slice(0, maxErrorPreview);
+          const errorDetail = report.errors.length
+            ? " Penyebab gagal: " +
+              errorPreview
+                .map(function (it) {
+                  return (
+                    "blok " +
+                    String((it && it.block) || "-") +
+                    " (" +
+                    String((it && it.error) || "error") +
+                    ")"
+                  );
+                })
+                .join("; ") +
+              (report.errors.length > maxErrorPreview
+                ? "; dan " +
+                  String(report.errors.length - maxErrorPreview) +
+                  " error lainnya"
+                : "")
+            : "";
+          setMsg(
+            "Import soal selesai. Berhasil: " +
+              String(report.success_blocks) +
+              ", gagal: " +
+              String(report.failed_blocks) +
+              "." +
+              errorDetail,
+          );
+        } catch (err) {
+          if (manuscriptImportOutput) {
+            manuscriptImportOutput.textContent =
+              "Import gagal:\n" +
+              String((err && err.message) || "Request failed");
+          }
+          setMsg("Import soal gagal: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
     if (manuscriptForm) {
       manuscriptForm.addEventListener("submit", async function (e) {
         e.preventDefault();
         syncManuscriptHiddenInputs();
         const fd = new FormData(manuscriptForm);
+        const editingVersionNo = Number(fd.get("editing_version_no") || 0);
+        const isEditMode = editingVersionNo > 0;
         const stemHTML = String(fd.get("stem_html") || "");
         if (isBlankHTML(stemHTML)) {
           setMsg("Naskah Soal (Stem) wajib diisi.");
@@ -6092,10 +7282,14 @@
         const done = beginBusy(
           manuscriptForm,
           msg,
-          "Menyimpan draft naskah...",
+          isEditMode
+            ? "Menyimpan perubahan naskah..."
+            : "Menyimpan draft naskah...",
         );
         try {
-          const questionID = Number(fd.get("question_id") || 0);
+          const questionID = isEditMode
+            ? manuscriptEditingQuestionID
+            : Number(fd.get("question_id") || 0);
           const stimulusID = Number(fd.get("stimulus_id") || 0);
           const payload = {
             stimulus_id: stimulusID,
@@ -6105,11 +7299,14 @@
             explanation_html: String(fd.get("explanation_html") || "").trim(),
             hint_html: String(fd.get("hint_html") || "").trim(),
           };
-          await api(
-            "/api/v1/questions/" + questionID + "/versions",
-            "POST",
-            payload,
-          );
+          const endpoint = isEditMode
+            ? "/api/v1/questions/" +
+              questionID +
+              "/versions/" +
+              editingVersionNo
+            : "/api/v1/questions/" + questionID + "/versions";
+          const method = isEditMode ? "PUT" : "POST";
+          await api(endpoint, method, payload);
           const versions = await api(
             "/api/v1/questions/" + questionID + "/versions",
             "GET",
@@ -6137,9 +7334,18 @@
           ensureManuscriptOptionRows();
           ensureTFStatementRows();
           applyManuscriptTypeUI(true);
-          setMsg("Draft naskah soal berhasil disimpan.");
+          clearManuscriptEditMode();
+          setMsg(
+            isEditMode
+              ? "Draft naskah soal berhasil diperbarui."
+              : "Draft naskah soal berhasil disimpan.",
+          );
         } catch (err) {
-          setMsg("Simpan draft naskah gagal: " + err.message);
+          setMsg(
+            (isEditMode
+              ? "Simpan perubahan naskah gagal: "
+              : "Simpan draft naskah gagal: ") + err.message,
+          );
         } finally {
           done();
         }
@@ -6160,10 +7366,13 @@
               manuscriptListQuestionSelect.value) ||
               0,
           );
-          const versions = await api(
-            "/api/v1/questions/" + questionID + "/versions",
-            "GET",
-          );
+          const versions =
+            questionID > 0
+              ? await api(
+                  "/api/v1/questions/" + questionID + "/versions",
+                  "GET",
+                )
+              : await loadAllManuscriptVersionsFromBlueprints();
           renderManuscripts(versions);
           setMsg("Versi naskah berhasil dimuat.");
         } catch (err) {
@@ -6221,21 +7430,114 @@
               manuscriptListQuestionSelect.value) ||
               0,
           );
-          if (questionID > 0) {
-            const versions = await api(
-              "/api/v1/questions/" + questionID + "/versions",
-              "GET",
-            );
-            renderManuscripts(versions);
-          } else {
-            renderManuscripts([]);
-          }
+          const versions =
+            questionID > 0
+              ? await api(
+                  "/api/v1/questions/" + questionID + "/versions",
+                  "GET",
+                )
+              : await loadAllManuscriptVersionsFromBlueprints();
+          renderManuscripts(versions);
           setMsg("Data naskah berhasil dimuat ulang.");
         } catch (err) {
           setMsg("Gagal muat ulang naskah: " + err.message);
         } finally {
           done();
         }
+      });
+    }
+
+    if (manuscriptPageSizeSelect) {
+      manuscriptPageSizeSelect.addEventListener("change", function () {
+        manuscriptPageSize = Math.max(
+          1,
+          Number(manuscriptPageSizeSelect.value) || 15,
+        );
+        manuscriptPage = 1;
+        renderManuscripts(manuscriptAllItems);
+      });
+    }
+
+    if (manuscriptPrevBtn) {
+      manuscriptPrevBtn.addEventListener("click", function () {
+        manuscriptPage = Math.max(1, manuscriptPage - 1);
+        renderManuscripts(manuscriptAllItems);
+      });
+    }
+
+    if (manuscriptNextBtn) {
+      manuscriptNextBtn.addEventListener("click", function () {
+        manuscriptPage += 1;
+        renderManuscripts(manuscriptAllItems);
+      });
+    }
+
+    if (manuscriptCancelEditBtn) {
+      manuscriptCancelEditBtn.addEventListener("click", function () {
+        if (!manuscriptForm) return;
+        clearManuscriptEditMode();
+        manuscriptForm.reset();
+        resetManuscriptEditors();
+        if (manuscriptStatementsWrap) manuscriptStatementsWrap.innerHTML = "";
+        if (manuscriptOptionsWrap) manuscriptOptionsWrap.innerHTML = "";
+        ensureManuscriptOptionRows();
+        ensureTFStatementRows();
+        applyManuscriptTypeUI(true);
+      });
+    }
+
+    if (questionOwnerScopeSelect) {
+      questionOwnerScopeSelect.addEventListener("change", async function () {
+        const done = beginBusy(
+          questionOwnerScopeSelect,
+          msg,
+          "Memuat data soal sesuai scope...",
+        );
+        try {
+          await loadBlueprints(
+            Number(
+              (blueprintFilterSubject && blueprintFilterSubject.value) || 0,
+            ),
+          );
+          const versions = await loadAllManuscriptVersionsFromBlueprints();
+          manuscriptPage = 1;
+          renderManuscripts(versions);
+          setManuscriptMsg("Scope soal berhasil diperbarui.");
+        } catch (err) {
+          setManuscriptMsg("Gagal memuat scope soal: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (manuscriptBody) {
+      manuscriptBody.addEventListener("click", async function (e) {
+        const btn =
+          e.target &&
+          e.target.closest(
+            "button[data-action][data-question-id][data-version-no]",
+          );
+        if (!btn) return;
+        const action = String(btn.getAttribute("data-action") || "").trim();
+        if (
+          action !== "preview-manuscript" &&
+          action !== "edit-manuscript" &&
+          action !== "delete-manuscript" &&
+          action !== "finalize-manuscript"
+        ) {
+          return;
+        }
+        const questionID = Number(btn.getAttribute("data-question-id") || 0);
+        const versionNo = Number(btn.getAttribute("data-version-no") || 0);
+        if (questionID <= 0 || versionNo <= 0) {
+          setManuscriptMsg(
+            "Aksi tidak valid: question/version tidak ditemukan.",
+          );
+          return;
+        }
+        e.preventDefault();
+        await runManuscriptRowAction(btn, action, questionID, versionNo);
       });
     }
 
