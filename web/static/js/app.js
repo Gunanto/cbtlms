@@ -304,6 +304,10 @@
     const profileSchoolCode = document.getElementById("profile-school-code");
     const startBtn = document.getElementById("start-btn");
     let pendingStartExamID = 0;
+    const userRole = String((user && user.role) || "")
+      .trim()
+      .toLowerCase();
+    const isStudentRole = userRole === "siswa";
 
     let subjects = [];
     const initDone = beginBusy(form, msg, "Memuat daftar mapel...");
@@ -456,6 +460,19 @@
       const examID = Number(examSelect.value || 0);
       if (!examID) return;
       pendingStartExamID = examID;
+
+      if (!isStudentRole) {
+        if (examTokenDialogInput) examTokenDialogInput.value = "";
+        if (
+          examTokenDialog &&
+          typeof examTokenDialog.showModal === "function"
+        ) {
+          examTokenDialog.showModal();
+          return;
+        }
+        text(msg, "Dialog token tidak tersedia. Hubungi proktor.");
+        return;
+      }
 
       try {
         const profile = await loadStudentProfile();

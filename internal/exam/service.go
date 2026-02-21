@@ -460,6 +460,9 @@ func (s *Service) ensureStudentAttemptProfileComplete(ctx context.Context, stude
 		}
 		return fmt.Errorf("load student profile: %w", err)
 	}
+	if role == "guru" {
+		return nil
+	}
 	if role != "siswa" {
 		return ErrAttemptForbidden
 	}

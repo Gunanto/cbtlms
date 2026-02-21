@@ -361,6 +361,25 @@ func TestStartAttemptAdminRequiresStudentID(t *testing.T) {
 	}
 }
 
+func TestStartAttemptReturnsForbiddenOnAttemptForbidden(t *testing.T) {
+	h := NewHandler(&mockExamService{
+		startAttemptFn: func(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
+			return nil, ErrAttemptForbidden
+		},
+	})
+
+	payload := []byte(`{"exam_id":2}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/attempts/start", bytes.NewReader(payload))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), &auth.User{ID: 11, Role: "guru"}))
+	w := httptest.NewRecorder()
+
+	h.Start(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
 func TestSaveAnswerForbiddenForNonOwner(t *testing.T) {
 	saveCalled := false
 	h := NewHandler(&mockExamService{
