@@ -42,6 +42,13 @@
                 <button
                     type="button"
                     class="btn btn-secondary admin-menu-btn"
+                    data-proktor-menu="results"
+                >
+                    Hasil Ujian
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary admin-menu-btn"
                     data-proktor-menu="master"
                 >
                     Data Master
@@ -87,6 +94,13 @@
                             data-proktor-jump="exams"
                         >
                             Kelola Ujian
+                        </button>
+                        <button
+                            type="button"
+                            class="btn btn-secondary dashboard-quick-btn"
+                            data-proktor-jump="results"
+                        >
+                            Hasil Ujian
                         </button>
                     </div>
                 </div>
@@ -349,6 +363,35 @@
                         Enroll Peserta per Kelas
                     </button>
                 </form>
+                <button
+                    id="proktor-exam-assignments-load-btn"
+                    class="btn btn-secondary mt"
+                    type="button"
+                >
+                    Muat Peserta Ujian
+                </button>
+
+                <div class="table-wrap mt">
+                    <table class="bs-table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Nama</th>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Assigned At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="proktor-exam-assignments-body">
+                            <tr>
+                                <td colspan="6" class="muted">
+                                    Belum ada data peserta ujian.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
                 <h4 class="mt">Naskah ke Ujian</h4>
                 <form id="proktor-exam-question-form" class="form-grid">
@@ -423,6 +466,66 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </section>
+
+            <section id="proktor-results-panel" class="panel" hidden>
+                <div class="admin-section-head">
+                    <h3>Hasil Ujian</h3>
+                    <button
+                        id="proktor-results-refresh-btn"
+                        class="btn btn-secondary"
+                        type="button"
+                    >
+                        Muat Ujian
+                    </button>
+                </div>
+
+                <form id="proktor-results-attempt-form" class="form-grid mt">
+                    <label>
+                        Attempt ID
+                        <input
+                            name="attempt_id"
+                            type="number"
+                            min="1"
+                            required
+                        />
+                    </label>
+                    <button class="btn btn-secondary" type="submit">
+                        Muat Nilai
+                    </button>
+                </form>
+
+                <div id="proktor-results-summary" class="box mt muted">
+                    Belum ada data nilai.
+                </div>
+
+                <div class="action-icons mt">
+                    <button
+                        id="proktor-results-report-btn"
+                        class="btn btn-secondary btn-inline"
+                        type="button"
+                    >
+                        Muat Laporan
+                    </button>
+                    <button
+                        id="proktor-results-stats-btn"
+                        class="btn btn-secondary btn-inline"
+                        type="button"
+                    >
+                        Muat Statistik
+                    </button>
+                    <button
+                        id="proktor-results-chart-btn"
+                        class="btn btn-secondary btn-inline"
+                        type="button"
+                    >
+                        Muat Grafik
+                    </button>
+                </div>
+                <div id="proktor-results-extra" class="box mt muted">
+                    Laporan/statistik/grafik akan diringkas dari data nilai
+                    attempt yang dimuat.
                 </div>
             </section>
 

@@ -462,6 +462,9 @@
     const daftarSoalBtn = document.getElementById("daftar-soal-btn");
     const daftarSoalPanel = document.getElementById("daftar-soal-panel");
     const daftarSoalBody = document.getElementById("daftar-soal-body");
+    const fontSmallBtn = document.getElementById("font-small-btn");
+    const fontMediumBtn = document.getElementById("font-medium-btn");
+    const fontLargeBtn = document.getElementById("font-large-btn");
     const eventMessage = document.getElementById("attempt-event-message");
     const questionState = {};
     let eventMessageTimer = null;
@@ -474,6 +477,7 @@
     };
     const pendingEvents = [];
     let flushingEvents = false;
+    const fontStorageKey = "cbtlms_attempt_font_size";
 
     function formatRemain(secs) {
       const s = Math.max(0, Number(secs || 0));
@@ -487,6 +491,44 @@
         ":" +
         String(ss).padStart(2, "0")
       );
+    }
+
+    function applyFontSize(size) {
+      const allowed = ["small", "medium", "large"];
+      const value = allowed.includes(String(size || ""))
+        ? String(size)
+        : "medium";
+      root.setAttribute("data-font-size", value);
+      if (fontSmallBtn) {
+        const active = value === "small";
+        fontSmallBtn.classList.toggle("active", active);
+        fontSmallBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (fontMediumBtn) {
+        const active = value === "medium";
+        fontMediumBtn.classList.toggle("active", active);
+        fontMediumBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (fontLargeBtn) {
+        const active = value === "large";
+        fontLargeBtn.classList.toggle("active", active);
+        fontLargeBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      try {
+        window.localStorage.setItem(fontStorageKey, value);
+      } catch (_) {
+        // Ignore if storage is unavailable.
+      }
+    }
+
+    function loadSavedFontSize() {
+      try {
+        const saved = window.localStorage.getItem(fontStorageKey);
+        if (saved) return saved;
+      } catch (_) {
+        // Ignore if storage is unavailable.
+      }
+      return "medium";
     }
 
     function isAnsweredPayload(qType, payload) {
@@ -843,10 +885,7 @@
         const btn = e.target.closest(".qno-btn");
         if (!btn) return;
         const targetNo = Number(btn.getAttribute("data-qno") || 0);
-        if (!targetNo || targetNo === currentNo) {
-          closeQuestionList();
-          return;
-        }
+        if (!targetNo || targetNo === currentNo) return;
         const done = beginBusy(
           btn,
           message,
@@ -857,7 +896,6 @@
             await saveCurrent();
           }
           await loadQuestion(targetNo);
-          closeQuestionList();
         } catch (err) {
           if (String(err.message || "").includes("attempt is not editable")) {
             applyAttemptReadonlyState("submitted");
@@ -870,22 +908,21 @@
       });
     }
 
-    document.addEventListener("click", function (e) {
-      if (!daftarSoalPanel || daftarSoalPanel.hidden) return;
-      if (
-        (daftarSoalBtn && daftarSoalBtn.contains(e.target)) ||
-        daftarSoalPanel.contains(e.target)
-      ) {
-        return;
-      }
-      closeQuestionList();
-    });
-
-    document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") {
-        closeQuestionList();
-      }
-    });
+    if (fontSmallBtn) {
+      fontSmallBtn.addEventListener("click", function () {
+        applyFontSize("small");
+      });
+    }
+    if (fontMediumBtn) {
+      fontMediumBtn.addEventListener("click", function () {
+        applyFontSize("medium");
+      });
+    }
+    if (fontLargeBtn) {
+      fontLargeBtn.addEventListener("click", function () {
+        applyFontSize("large");
+      });
+    }
 
     document
       .getElementById("prev-btn")
@@ -1042,6 +1079,7 @@
     });
 
     try {
+      applyFontSize(loadSavedFontSize());
       text(message, "Memuat attempt...");
       const summary = await loadSummary();
       syncSubmitVisibility();
@@ -2789,6 +2827,12 @@
     const assignExamIDInput = document.getElementById("proktor-assign-exam-id");
     const assignSchoolSelect = document.getElementById("proktor-assign-school");
     const assignClassSelect = document.getElementById("proktor-assign-class");
+    const examAssignmentsLoadBtn = document.getElementById(
+      "proktor-exam-assignments-load-btn",
+    );
+    const examAssignmentsBody = document.getElementById(
+      "proktor-exam-assignments-body",
+    );
     const examQuestionForm = document.getElementById(
       "proktor-exam-question-form",
     );
@@ -2822,10 +2866,29 @@
     );
     const dashboardPanel = document.getElementById("proktor-dashboard-panel");
     const eventsPanel = document.getElementById("proktor-events-panel");
+    const resultsPanel = document.getElementById("proktor-results-panel");
+    const resultsRefreshBtn = document.getElementById(
+      "proktor-results-refresh-btn",
+    );
+    const resultsAttemptForm = document.getElementById(
+      "proktor-results-attempt-form",
+    );
+    const resultsSummary = document.getElementById("proktor-results-summary");
+    const resultsExtra = document.getElementById("proktor-results-extra");
+    const resultsReportBtn = document.getElementById(
+      "proktor-results-report-btn",
+    );
+    const resultsStatsBtn = document.getElementById(
+      "proktor-results-stats-btn",
+    );
+    const resultsChartBtn = document.getElementById(
+      "proktor-results-chart-btn",
+    );
     const masterPanel = document.getElementById("proktor-master-panel");
     const quickPanel = document.getElementById("proktor-quick-panel");
     const menuButtons = root.querySelectorAll("[data-proktor-menu]");
     let examFormSubmitting = false;
+    let latestResultData = null;
     let placementUsers = [];
     let placementSchools = [];
     let placementClasses = [];
@@ -2850,6 +2913,81 @@
       text(tokenResult, value);
       if (tokenResult) tokenResult.classList.remove("muted");
     };
+    const setResultsSummary = function (value) {
+      text(resultsSummary, value);
+      if (resultsSummary) resultsSummary.classList.remove("muted");
+    };
+    const setResultsExtra = function (value) {
+      text(resultsExtra, value);
+      if (resultsExtra) resultsExtra.classList.remove("muted");
+    };
+
+    function summarizeAttemptResult(mode) {
+      const data = latestResultData;
+      const summary = data && data.summary ? data.summary : {};
+      const items = Array.isArray(data && data.items) ? data.items : [];
+      if (!data) {
+        setResultsExtra("Muat nilai (Attempt ID) terlebih dahulu.");
+        return;
+      }
+      const total = items.length;
+      const correct = items.filter(function (it) {
+        return !!it.is_correct;
+      }).length;
+      const wrong = items.filter(function (it) {
+        return it.is_correct === false;
+      }).length;
+      const unanswered = items.filter(function (it) {
+        return String(it.reason || "") === "unanswered";
+      }).length;
+      const score = Number(summary.score || 0);
+      if (mode === "report") {
+        setResultsExtra(
+          "Laporan: exam #" +
+            String(summary.exam_id || "-") +
+            ", attempt #" +
+            String(summary.id || "-") +
+            ", skor " +
+            String(score) +
+            ", benar " +
+            String(correct) +
+            ", salah " +
+            String(wrong) +
+            ", kosong " +
+            String(unanswered) +
+            ".",
+        );
+        return;
+      }
+      if (mode === "stats") {
+        const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+        setResultsExtra(
+          "Statistik: total soal " +
+            String(total) +
+            ", akurasi " +
+            String(pct) +
+            "%, benar " +
+            String(correct) +
+            ", salah " +
+            String(wrong) +
+            ", kosong " +
+            String(unanswered) +
+            ".",
+        );
+        return;
+      }
+      const bar = total > 0 ? Math.round((correct / total) * 20) : 0;
+      setResultsExtra(
+        "Grafik (teks): [" +
+          "#".repeat(Math.max(0, bar)) +
+          "-".repeat(Math.max(0, 20 - bar)) +
+          "] " +
+          String(correct) +
+          "/" +
+          String(total) +
+          " benar.",
+      );
+    }
     function resetAssignClassSelect(placeholder) {
       if (!assignClassSelect) return;
       const textValue = String(placeholder || "Pilih kelas...");
@@ -2993,6 +3131,7 @@
         "events",
         "token",
         "exams",
+        "results",
         "master",
         "quick",
       ];
@@ -3007,6 +3146,7 @@
       if (eventsPanel) eventsPanel.hidden = key !== "events";
       if (tokenPanel) tokenPanel.hidden = key !== "token";
       if (examsPanel) examsPanel.hidden = key !== "exams";
+      if (resultsPanel) resultsPanel.hidden = key !== "results";
       if (masterPanel) masterPanel.hidden = key !== "master";
       if (quickPanel) quickPanel.hidden = key !== "quick";
     }
@@ -3118,6 +3258,37 @@
             "</button></td>",
         ].join("");
         examQuestionsBody.appendChild(tr);
+      });
+    }
+
+    async function loadExamAssignments(examID) {
+      if (!examAssignmentsBody) return;
+      if (!examID || examID <= 0) {
+        examAssignmentsBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Isi Exam ID lalu muat peserta ujian.</td></tr>';
+        return;
+      }
+      const items = await api(
+        "/api/v1/admin/exams/" + Number(examID) + "/assignments",
+        "GET",
+      );
+      if (!Array.isArray(items) || !items.length) {
+        examAssignmentsBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Belum ada peserta terdaftar.</td></tr>';
+        return;
+      }
+      examAssignmentsBody.innerHTML = "";
+      items.forEach(function (it) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>" + escapeHtml(String(it.user_id || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.full_name || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.username || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.role || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.status || "-")) + "</td>",
+          "<td>" + escapeHtml(fmtDate(it.assigned_at)) + "</td>",
+        ].join("");
+        examAssignmentsBody.appendChild(tr);
       });
     }
 
@@ -3250,6 +3421,10 @@
     }
 
     try {
+      if (String((user && user.role) || "") === "proktor") {
+        if (examQuestionForm) examQuestionForm.hidden = true;
+        if (examQuestionsLoadBtn) examQuestionsLoadBtn.hidden = true;
+      }
       await loadProktorStatsAndPending();
       await loadMasterReadonly();
       await loadPlacementOptions();
@@ -3501,10 +3676,13 @@
           if (assignExamIDInput) assignExamIDInput.value = String(examID);
           if (questionExamIDInput) questionExamIDInput.value = String(examID);
           try {
-            await loadExamQuestions(examID);
+            await Promise.all([
+              loadExamQuestions(examID),
+              loadExamAssignments(examID),
+            ]);
             setMsg("Exam ID " + examID + " dipilih untuk enroll dan naskah.");
           } catch (err) {
-            setMsg("Gagal memuat soal ujian: " + err.message);
+            setMsg("Gagal memuat data ujian: " + err.message);
           }
           return;
         }
@@ -3559,9 +3737,33 @@
             "Enroll peserta berhasil disimpan. Total peserta aktif: " +
               String((Array.isArray(items) && items.length) || 0),
           );
-          await loadExamManageTable();
+          await Promise.all([
+            loadExamManageTable(),
+            loadExamAssignments(examID),
+          ]);
         } catch (err) {
           setMsg("Gagal menyimpan enroll peserta: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (examAssignmentsLoadBtn) {
+      examAssignmentsLoadBtn.addEventListener("click", async function () {
+        const examID = Number(
+          (assignExamIDInput && assignExamIDInput.value) || 0,
+        );
+        const done = beginBusy(
+          examAssignmentsLoadBtn,
+          msg,
+          "Memuat peserta ujian...",
+        );
+        try {
+          await loadExamAssignments(examID);
+          setMsg("Peserta ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat peserta ujian: " + err.message);
         } finally {
           done();
         }
@@ -3746,6 +3948,90 @@
         }
       });
     }
+
+    if (resultsRefreshBtn) {
+      resultsRefreshBtn.addEventListener("click", async function () {
+        const done = beginBusy(
+          resultsRefreshBtn,
+          msg,
+          "Memuat daftar ujian...",
+        );
+        try {
+          await loadExamManageTable();
+          setMsg("Daftar ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat daftar ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsAttemptForm) {
+      resultsAttemptForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const fd = new FormData(resultsAttemptForm);
+        const attemptID = Number(fd.get("attempt_id") || 0);
+        if (attemptID <= 0) {
+          setMsg("Attempt ID tidak valid.");
+          return;
+        }
+        const done = beginBusy(
+          resultsAttemptForm,
+          msg,
+          "Memuat nilai attempt...",
+        );
+        try {
+          const out = await api(
+            "/api/v1/attempts/" + attemptID + "/result",
+            "GET",
+          );
+          latestResultData = out || null;
+          const summary = (out && out.summary) || {};
+          const itemCount = Array.isArray(out && out.items)
+            ? out.items.length
+            : 0;
+          setResultsSummary(
+            "Exam #" +
+              String(summary.exam_id || "-") +
+              " | Attempt #" +
+              String(summary.id || "-") +
+              " | Skor: " +
+              String(summary.score || 0) +
+              " | Benar: " +
+              String(summary.total_correct || 0) +
+              " | Salah: " +
+              String(summary.total_wrong || 0) +
+              " | Kosong: " +
+              String(summary.total_unanswered || 0) +
+              " | Item: " +
+              String(itemCount),
+          );
+          setResultsExtra("Nilai dimuat. Pilih Muat Laporan/Statistik/Grafik.");
+          setMsg("Nilai attempt berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat nilai: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsReportBtn) {
+      resultsReportBtn.addEventListener("click", function () {
+        summarizeAttemptResult("report");
+      });
+    }
+    if (resultsStatsBtn) {
+      resultsStatsBtn.addEventListener("click", function () {
+        summarizeAttemptResult("stats");
+      });
+    }
+    if (resultsChartBtn) {
+      resultsChartBtn.addEventListener("click", function () {
+        summarizeAttemptResult("chart");
+      });
+    }
   }
 
   async function initGuruPage() {
@@ -3810,6 +4096,8 @@
     const stimuliPanel = document.getElementById("guru-stimuli-panel");
     const manuscriptsPanel = document.getElementById("guru-manuscripts-panel");
     const subjectsPanel = document.getElementById("guru-subjects-panel");
+    const examsPanel = document.getElementById("guru-exams-panel");
+    const resultsPanel = document.getElementById("guru-results-panel");
     const menuButtons = root.querySelectorAll("[data-guru-menu]");
 
     const blueprintForm = document.getElementById("guru-blueprint-form");
@@ -4048,6 +4336,38 @@
     const manuscriptPreviewContent = document.getElementById(
       "guru-manuscript-preview-content",
     );
+    const examsRefreshBtn = document.getElementById("guru-exams-refresh-btn");
+    const examForm = document.getElementById("guru-exam-form");
+    const examSubjectSelect = document.getElementById("guru-exam-subject");
+    const examsBody = document.getElementById("guru-exams-body");
+    const examQuestionForm = document.getElementById("guru-exam-question-form");
+    const questionExamIDInput = document.getElementById(
+      "guru-question-exam-id",
+    );
+    const examQuestionsLoadBtn = document.getElementById(
+      "guru-exam-questions-load-btn",
+    );
+    const examQuestionsBody = document.getElementById(
+      "guru-exam-questions-body",
+    );
+    const resultsRefreshBtn = document.getElementById(
+      "guru-results-refresh-btn",
+    );
+    const resultsAssignmentForm = document.getElementById(
+      "guru-results-assignment-form",
+    );
+    const resultsExamIDInput = document.getElementById("guru-results-exam-id");
+    const resultsAssignmentBody = document.getElementById(
+      "guru-results-assignment-body",
+    );
+    const resultsAttemptForm = document.getElementById(
+      "guru-results-attempt-form",
+    );
+    const resultsSummary = document.getElementById("guru-results-summary");
+    const resultsExtra = document.getElementById("guru-results-extra");
+    const resultsReportBtn = document.getElementById("guru-results-report-btn");
+    const resultsStatsBtn = document.getElementById("guru-results-stats-btn");
+    const resultsChartBtn = document.getElementById("guru-results-chart-btn");
 
     const reviewDecisionDialog = document.getElementById(
       "guru-review-decision-dialog",
@@ -4088,6 +4408,8 @@
     let stimulusListPageSize = 10;
     let stimulusListSearch = "";
     let lastStimulusImportErrors = [];
+    let examFormSubmitting = false;
+    let latestResultData = null;
 
     const setMsg = function (value) {
       text(msg, value);
@@ -4097,6 +4419,81 @@
       if (manuscriptMessage) text(manuscriptMessage, message);
       setMsg(message);
     };
+    const setResultsSummary = function (value) {
+      text(resultsSummary, value);
+      if (resultsSummary) resultsSummary.classList.remove("muted");
+    };
+    const setResultsExtra = function (value) {
+      text(resultsExtra, value);
+      if (resultsExtra) resultsExtra.classList.remove("muted");
+    };
+
+    function summarizeAttemptResult(mode) {
+      const data = latestResultData;
+      const summary = data && data.summary ? data.summary : {};
+      const items = Array.isArray(data && data.items) ? data.items : [];
+      if (!data) {
+        setResultsExtra("Muat nilai (Attempt ID) terlebih dahulu.");
+        return;
+      }
+      const total = items.length;
+      const correct = items.filter(function (it) {
+        return !!it.is_correct;
+      }).length;
+      const wrong = items.filter(function (it) {
+        return it.is_correct === false;
+      }).length;
+      const unanswered = items.filter(function (it) {
+        return String(it.reason || "") === "unanswered";
+      }).length;
+      const score = Number(summary.score || 0);
+      if (mode === "report") {
+        setResultsExtra(
+          "Laporan: exam #" +
+            String(summary.exam_id || "-") +
+            ", attempt #" +
+            String(summary.id || "-") +
+            ", skor " +
+            String(score) +
+            ", benar " +
+            String(correct) +
+            ", salah " +
+            String(wrong) +
+            ", kosong " +
+            String(unanswered) +
+            ".",
+        );
+        return;
+      }
+      if (mode === "stats") {
+        const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+        setResultsExtra(
+          "Statistik: total soal " +
+            String(total) +
+            ", akurasi " +
+            String(pct) +
+            "%, benar " +
+            String(correct) +
+            ", salah " +
+            String(wrong) +
+            ", kosong " +
+            String(unanswered) +
+            ".",
+        );
+        return;
+      }
+      const bar = total > 0 ? Math.round((correct / total) * 20) : 0;
+      setResultsExtra(
+        "Grafik (teks): [" +
+          "#".repeat(Math.max(0, bar)) +
+          "-".repeat(Math.max(0, 20 - bar)) +
+          "] " +
+          String(correct) +
+          "/" +
+          String(total) +
+          " benar.",
+      );
+    }
 
     function isOwnerOnlyQuestionsEnabled() {
       const scope = String(
@@ -5343,6 +5740,8 @@
         "blueprints",
         "stimuli",
         "manuscripts",
+        "exams",
+        "results",
         "subjects",
       ];
       const key = allowed.includes(menu) ? menu : "dashboard";
@@ -5355,6 +5754,8 @@
       if (blueprintsPanel) blueprintsPanel.hidden = key !== "blueprints";
       if (stimuliPanel) stimuliPanel.hidden = key !== "stimuli";
       if (manuscriptsPanel) manuscriptsPanel.hidden = key !== "manuscripts";
+      if (examsPanel) examsPanel.hidden = key !== "exams";
+      if (resultsPanel) resultsPanel.hidden = key !== "results";
       if (subjectsPanel) subjectsPanel.hidden = key !== "subjects";
     }
 
@@ -6012,6 +6413,7 @@
       fillSubjectSelect(blueprintFilterSubject, true);
       fillSubjectSelect(stimulusSubjectSelect, false);
       fillSubjectSelect(stimulusListSubject, false);
+      fillSubjectSelect(examSubjectSelect, false);
       return subjectItems;
     }
 
@@ -6133,6 +6535,129 @@
       if (statReviewPending) statReviewPending.textContent = String(pending);
     }
 
+    async function loadGuruExamSubjectOptions() {
+      if (!examSubjectSelect) return;
+      const subjects = await api("/api/v1/subjects", "GET");
+      examSubjectSelect.innerHTML = '<option value="">Pilih mapel...</option>';
+      if (!Array.isArray(subjects)) return;
+      subjects.forEach(function (it) {
+        const o = document.createElement("option");
+        o.value = String(it.id || "");
+        o.textContent =
+          String(it.education_level || "") +
+          " | " +
+          String(it.subject_type || "") +
+          " | " +
+          String(it.name || "");
+        examSubjectSelect.appendChild(o);
+      });
+    }
+
+    async function loadGuruExamManageTable() {
+      const exams = await api("/api/v1/admin/exams/manage", "GET");
+      if (!examsBody) return;
+      if (!Array.isArray(exams) || !exams.length) {
+        examsBody.innerHTML =
+          '<tr><td colspan="7" class="muted">Belum ada data ujian.</td></tr>';
+        return;
+      }
+      examsBody.innerHTML = "";
+      exams.forEach(function (it) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>" + escapeHtml(String(it.id || "")) + "</td>",
+          "<td>" +
+            escapeHtml(String(it.code || "")) +
+            "<br><small>" +
+            escapeHtml(String(it.title || "")) +
+            "</small></td>",
+          "<td>" + escapeHtml(String(it.subject_name || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.duration_minutes || 0)) + " menit</td>",
+          "<td>" + escapeHtml(String(it.question_count || 0)) + "</td>",
+          "<td>" + escapeHtml(String(it.assigned_count || 0)) + "</td>",
+          '<td><span class="action-icons">' +
+            '<button class="icon-only-btn" type="button" data-exam-action="use" data-id="' +
+            escapeHtml(String(it.id || "")) +
+            '" title="Pilih Ujian" aria-label="Pilih Ujian">' +
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' +
+            "</button>" +
+            '<button class="icon-only-btn danger" type="button" data-exam-action="delete" data-id="' +
+            escapeHtml(String(it.id || "")) +
+            '" title="Nonaktifkan Ujian" aria-label="Nonaktifkan Ujian">' +
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>' +
+            "</button>" +
+            "</span></td>",
+        ].join("");
+        examsBody.appendChild(tr);
+      });
+    }
+
+    async function loadGuruExamQuestions(examID) {
+      if (!examQuestionsBody) return;
+      if (!examID || examID <= 0) {
+        examQuestionsBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Pilih exam lalu muat soal ujian.</td></tr>';
+        return;
+      }
+      const items = await api(
+        "/api/v1/admin/exams/" + Number(examID) + "/questions",
+        "GET",
+      );
+      if (!Array.isArray(items) || !items.length) {
+        examQuestionsBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Belum ada soal di ujian ini.</td></tr>';
+        return;
+      }
+      examQuestionsBody.innerHTML = "";
+      items.forEach(function (it) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>" + escapeHtml(String(it.seq_no || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.question_id || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.question_type || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.stem_preview || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.weight || 1)) + "</td>",
+          '<td><button class="icon-only-btn danger" type="button" data-exam-question-del="' +
+            escapeHtml(String(it.question_id || "")) +
+            '" title="Hapus dari ujian" aria-label="Hapus dari ujian">' +
+            '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>' +
+            "</button></td>",
+        ].join("");
+        examQuestionsBody.appendChild(tr);
+      });
+    }
+
+    async function loadGuruExamAssignments(examID) {
+      if (!resultsAssignmentBody) return;
+      if (!examID || examID <= 0) {
+        resultsAssignmentBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Isi Exam ID lalu muat peserta ujian.</td></tr>';
+        return;
+      }
+      const items = await api(
+        "/api/v1/admin/exams/" + Number(examID) + "/assignments",
+        "GET",
+      );
+      if (!Array.isArray(items) || !items.length) {
+        resultsAssignmentBody.innerHTML =
+          '<tr><td colspan="6" class="muted">Belum ada peserta terdaftar.</td></tr>';
+        return;
+      }
+      resultsAssignmentBody.innerHTML = "";
+      items.forEach(function (it) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = [
+          "<td>" + escapeHtml(String(it.user_id || "")) + "</td>",
+          "<td>" + escapeHtml(String(it.full_name || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.username || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.role || "-")) + "</td>",
+          "<td>" + escapeHtml(String(it.status || "-")) + "</td>",
+          "<td>" + escapeHtml(fmtDate(it.assigned_at)) + "</td>",
+        ].join("");
+        resultsAssignmentBody.appendChild(tr);
+      });
+    }
+
     async function loadReviews(statusValue) {
       const status = String(statusValue || "").trim();
       const qs = status ? "?status=" + encodeURIComponent(status) : "";
@@ -6187,6 +6712,8 @@
         loadSubjects(),
         loadReviews(statusValue),
         loadReviewStats(),
+        loadGuruExamSubjectOptions(),
+        loadGuruExamManageTable(),
       ]);
       const defaultSubjectID = Number(
         (stimulusListSubject && stimulusListSubject.value) || 0,
@@ -7576,6 +8103,299 @@
         } finally {
           done();
         }
+      });
+    }
+
+    if (examsRefreshBtn) {
+      examsRefreshBtn.addEventListener("click", async function () {
+        const done = beginBusy(examsRefreshBtn, msg, "Memuat data ujian...");
+        try {
+          await Promise.all([
+            loadGuruExamManageTable(),
+            loadGuruExamSubjectOptions(),
+          ]);
+          setMsg("Data ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat data ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (examForm) {
+      examForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        if (examFormSubmitting) {
+          setMsg("Penyimpanan ujian sedang diproses. Mohon tunggu...");
+          return;
+        }
+        const fd = new FormData(examForm);
+        const examID = Number(fd.get("exam_id") || 0);
+        const payload = {
+          code: String(fd.get("code") || "").trim(),
+          title: String(fd.get("title") || "").trim(),
+          subject_id: Number(fd.get("subject_id") || 0),
+          duration_minutes: Number(fd.get("duration_minutes") || 90),
+          review_policy: String(fd.get("review_policy") || "after_submit"),
+          is_active: true,
+        };
+        examFormSubmitting = true;
+        const done = beginBusy(examForm, msg, "Menyimpan ujian...");
+        try {
+          const out =
+            examID > 0
+              ? await api("/api/v1/admin/exams/" + examID, "PUT", payload)
+              : await api("/api/v1/admin/exams", "POST", payload);
+          const savedID = out && out.id ? String(out.id) : "-";
+          setMsg("Ujian berhasil disimpan. ID: " + savedID);
+          examForm.reset();
+          const examIDInput = examForm.elements.namedItem("exam_id");
+          if (examIDInput) examIDInput.value = "";
+          await loadGuruExamManageTable();
+        } catch (err) {
+          setMsg("Gagal menyimpan ujian: " + err.message);
+        } finally {
+          done();
+          window.setTimeout(function () {
+            examFormSubmitting = false;
+          }, 700);
+        }
+      });
+    }
+
+    if (examsBody) {
+      examsBody.addEventListener("click", async function (e) {
+        const btn =
+          e.target && e.target.closest("button[data-exam-action][data-id]");
+        if (!btn) return;
+        const examID = Number(btn.getAttribute("data-id") || 0);
+        const action = String(btn.getAttribute("data-exam-action") || "");
+        if (examID <= 0) return;
+        if (action === "use") {
+          if (questionExamIDInput) questionExamIDInput.value = String(examID);
+          if (resultsExamIDInput) resultsExamIDInput.value = String(examID);
+          try {
+            await Promise.all([
+              loadGuruExamQuestions(examID),
+              loadGuruExamAssignments(examID),
+            ]);
+            setMsg("Exam ID " + examID + " dipilih.");
+          } catch (err) {
+            setMsg("Gagal memuat data ujian: " + err.message);
+          }
+          return;
+        }
+        if (action === "delete") {
+          if (!window.confirm("Nonaktifkan ujian ini?")) return;
+          const done = beginBusy(btn, msg, "Menonaktifkan ujian...");
+          try {
+            await api("/api/v1/admin/exams/" + examID, "DELETE");
+            await loadGuruExamManageTable();
+            setMsg("Ujian berhasil dinonaktifkan.");
+          } catch (err) {
+            setMsg("Gagal menonaktifkan ujian: " + err.message);
+          } finally {
+            done();
+          }
+        }
+      });
+    }
+
+    if (examQuestionForm) {
+      examQuestionForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const fd = new FormData(examQuestionForm);
+        const examID = Number(fd.get("exam_id") || 0);
+        if (examID <= 0) {
+          setMsg("Isi Exam ID untuk menambah naskah.");
+          return;
+        }
+        const payload = {
+          question_id: Number(fd.get("question_id") || 0),
+          seq_no: Number(fd.get("seq_no") || 0),
+          weight: Number(fd.get("weight") || 1),
+        };
+        const done = beginBusy(
+          examQuestionForm,
+          msg,
+          "Menyimpan naskah ke ujian...",
+        );
+        try {
+          await api(
+            "/api/v1/admin/exams/" + examID + "/questions",
+            "POST",
+            payload,
+          );
+          await Promise.all([
+            loadGuruExamQuestions(examID),
+            loadGuruExamManageTable(),
+          ]);
+          setMsg("Naskah berhasil dimasukkan ke ujian.");
+        } catch (err) {
+          setMsg("Gagal menyimpan naskah ke ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (examQuestionsLoadBtn) {
+      examQuestionsLoadBtn.addEventListener("click", async function () {
+        const examID = Number(
+          (questionExamIDInput && questionExamIDInput.value) || 0,
+        );
+        const done = beginBusy(
+          examQuestionsLoadBtn,
+          msg,
+          "Memuat soal ujian...",
+        );
+        try {
+          await loadGuruExamQuestions(examID);
+          setMsg("Soal ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat soal ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (examQuestionsBody) {
+      examQuestionsBody.addEventListener("click", async function (e) {
+        const btn =
+          e.target && e.target.closest("button[data-exam-question-del]");
+        if (!btn) return;
+        const examID = Number(
+          (questionExamIDInput && questionExamIDInput.value) || 0,
+        );
+        const questionID = Number(
+          btn.getAttribute("data-exam-question-del") || 0,
+        );
+        if (examID <= 0 || questionID <= 0) return;
+        if (!window.confirm("Hapus soal ini dari ujian?")) return;
+        const done = beginBusy(btn, msg, "Menghapus soal dari ujian...");
+        try {
+          await api(
+            "/api/v1/admin/exams/" + examID + "/questions/" + questionID,
+            "DELETE",
+            {},
+          );
+          await Promise.all([
+            loadGuruExamQuestions(examID),
+            loadGuruExamManageTable(),
+          ]);
+          setMsg("Soal berhasil dihapus dari ujian.");
+        } catch (err) {
+          setMsg("Gagal menghapus soal dari ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsRefreshBtn) {
+      resultsRefreshBtn.addEventListener("click", async function () {
+        const done = beginBusy(
+          resultsRefreshBtn,
+          msg,
+          "Memuat daftar ujian...",
+        );
+        try {
+          await loadGuruExamManageTable();
+          setMsg("Daftar ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat daftar ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsAssignmentForm) {
+      resultsAssignmentForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const fd = new FormData(resultsAssignmentForm);
+        const examID = Number(fd.get("exam_id") || 0);
+        const done = beginBusy(
+          resultsAssignmentForm,
+          msg,
+          "Memuat peserta ujian...",
+        );
+        try {
+          await loadGuruExamAssignments(examID);
+          setMsg("Peserta ujian berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat peserta ujian: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsAttemptForm) {
+      resultsAttemptForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const fd = new FormData(resultsAttemptForm);
+        const attemptID = Number(fd.get("attempt_id") || 0);
+        if (attemptID <= 0) {
+          setMsg("Attempt ID tidak valid.");
+          return;
+        }
+        const done = beginBusy(
+          resultsAttemptForm,
+          msg,
+          "Memuat nilai attempt...",
+        );
+        try {
+          const out = await api(
+            "/api/v1/attempts/" + attemptID + "/result",
+            "GET",
+          );
+          latestResultData = out || null;
+          const summary = (out && out.summary) || {};
+          const itemCount = Array.isArray(out && out.items)
+            ? out.items.length
+            : 0;
+          setResultsSummary(
+            "Exam #" +
+              String(summary.exam_id || "-") +
+              " | Attempt #" +
+              String(summary.id || "-") +
+              " | Skor: " +
+              String(summary.score || 0) +
+              " | Benar: " +
+              String(summary.total_correct || 0) +
+              " | Salah: " +
+              String(summary.total_wrong || 0) +
+              " | Kosong: " +
+              String(summary.total_unanswered || 0) +
+              " | Item: " +
+              String(itemCount),
+          );
+          setResultsExtra("Nilai dimuat. Pilih Muat Laporan/Statistik/Grafik.");
+          setMsg("Nilai attempt berhasil dimuat.");
+        } catch (err) {
+          setMsg("Gagal memuat nilai: " + err.message);
+        } finally {
+          done();
+        }
+      });
+    }
+
+    if (resultsReportBtn) {
+      resultsReportBtn.addEventListener("click", function () {
+        summarizeAttemptResult("report");
+      });
+    }
+    if (resultsStatsBtn) {
+      resultsStatsBtn.addEventListener("click", function () {
+        summarizeAttemptResult("stats");
+      });
+    }
+    if (resultsChartBtn) {
+      resultsChartBtn.addEventListener("click", function () {
+        summarizeAttemptResult("chart");
       });
     }
 

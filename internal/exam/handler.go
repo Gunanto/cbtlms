@@ -945,7 +945,7 @@ func writeJSON(w http.ResponseWriter, r *http.Request, code int, payload respons
 }
 
 func (h *Handler) authorizeAttemptAccess(r *http.Request, user *auth.User, attemptID int64) error {
-	if user.Role == "admin" || user.Role == "proktor" {
+	if user.Role == "admin" || user.Role == "proktor" || user.Role == "guru" {
 		return nil
 	}
 
