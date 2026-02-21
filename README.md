@@ -85,6 +85,33 @@ Gunakan runner:
 ./scripts/migrate.sh down 1
 ```
 
+## Security baseline (DB / anti-ransomware)
+
+- Gunakan password kuat untuk Postgres/MinIO via env:
+  - `POSTGRES_PASSWORD`
+  - `MINIO_ROOT_USER`
+  - `MINIO_ROOT_PASSWORD`
+- Jangan pakai credential default di production.
+- Set `APP_ENV=production` agar aplikasi menolak konfigurasi berisiko:
+  - `DB_DSN` dengan `sslmode=disable`
+  - password DB default
+  - `CSRF_ENFORCED=false`
+- Gunakan backup terenkripsi:
+
+```bash
+BACKUP_DIR=/path/secure-backups \
+ENCRYPT=true \
+BACKUP_PASSPHRASE='ganti-dengan-passphrase-kuat' \
+./scripts/backup.sh
+```
+
+- Uji restore backup secara berkala:
+
+```bash
+BACKUP_PASSPHRASE='ganti-dengan-passphrase-kuat' \
+./scripts/restore_check.sh /path/backup.sql.gz.enc
+```
+
 ## Catatan admin/proktor
 
 - Untuk MVP, admin dan proktor memakai dashboard operasional yang sama.

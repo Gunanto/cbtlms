@@ -8,7 +8,7 @@ DB_NAME="${DB_NAME:-cbtlms}"
 usage() {
   cat <<USAGE
 Usage:
-  scripts/restore_check.sh <backup_file.sql|backup_file.sql.gz>
+  scripts/restore_check.sh <backup_file.sql|backup_file.sql.gz|backup_file.sql.enc|backup_file.sql.gz.enc>
 
 This script is non-destructive to main DB:
 - creates temporary database
@@ -20,12 +20,14 @@ Env overrides:
   DB_CONTAINER (default: cbtlms-postgres)
   DB_USER      (default: cbtlms)
   DB_NAME      (default: cbtlms)
+  BACKUP_PASSPHRASE (required for *.enc backup files)
 USAGE
 }
 
 require_tools() {
   command -v docker >/dev/null 2>&1 || { echo "docker not found"; exit 1; }
   command -v gunzip >/dev/null 2>&1 || { echo "gunzip not found"; exit 1; }
+  command -v openssl >/dev/null 2>&1 || { echo "openssl not found"; exit 1; }
 }
 
 check_container() {
@@ -62,7 +64,22 @@ main() {
   docker exec "$DB_CONTAINER" createdb -U "$DB_USER" "$temp_db"
 
   echo "Restoring backup into temp DB"
-  if [[ "$backup_file" == *.gz ]]; then
+  if [[ "$backup_file" == *.gz.enc ]]; then
+    if [[ -z "${BACKUP_PASSPHRASE:-}" ]]; then
+      echo "BACKUP_PASSPHRASE is required for encrypted backup file"
+      exit 1
+    fi
+    openssl enc -d -aes-256-cbc -pbkdf2 -in "$backup_file" -pass "env:BACKUP_PASSPHRASE" \
+      | gunzip -c \
+      | docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$temp_db" >/dev/null
+  elif [[ "$backup_file" == *.sql.enc ]]; then
+    if [[ -z "${BACKUP_PASSPHRASE:-}" ]]; then
+      echo "BACKUP_PASSPHRASE is required for encrypted backup file"
+      exit 1
+    fi
+    openssl enc -d -aes-256-cbc -pbkdf2 -in "$backup_file" -pass "env:BACKUP_PASSPHRASE" \
+      | docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$temp_db" >/dev/null
+  elif [[ "$backup_file" == *.gz ]]; then
     gunzip -c "$backup_file" | docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$temp_db" >/dev/null
   else
     cat "$backup_file" | docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$temp_db" >/dev/null

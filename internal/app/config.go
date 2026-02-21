@@ -8,6 +8,7 @@ import (
 
 // Config stores runtime configuration loaded from environment variables.
 type Config struct {
+	AppEnv              string
 	HTTPAddr            string
 	DBDSN               string
 	DefaultExamMinutes  int
@@ -42,6 +43,7 @@ func LoadConfig() Config {
 	}
 
 	return Config{
+		AppEnv:              envOrDefault("APP_ENV", "development"),
 		HTTPAddr:            addr,
 		DBDSN:               dsn,
 		DefaultExamMinutes:  90,
