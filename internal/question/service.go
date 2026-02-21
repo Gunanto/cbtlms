@@ -21,6 +21,8 @@ var (
 	ErrVersionNotFound    = errors.New("question version not found")
 	ErrReviewTaskNotFound = errors.New("review task not found")
 	ErrReviewForbidden    = errors.New("review forbidden")
+	ErrReopenNotAllowed   = errors.New("reopen final tidak diizinkan karena soal sudah pernah dipakai ujian")
+	ErrReopenPending      = errors.New("permintaan reopen final masih menunggu persetujuan")
 )
 
 type Service struct {
@@ -207,6 +209,39 @@ type QuestionReview struct {
 	Comments []ReviewComment `json:"comments"`
 }
 
+type RequestReopenFinalInput struct {
+	QuestionID    int64
+	VersionNo     int
+	Reason        string
+	RequestedBy   int64
+	RequestedRole string
+}
+
+type ApproveReopenFinalInput struct {
+	QuestionID   int64
+	VersionNo    int
+	ApproverID   int64
+	ApproverRole string
+	Note         string
+}
+
+type ReopenFinalRequest struct {
+	ID              int64      `json:"id"`
+	QuestionID      int64      `json:"question_id"`
+	VersionNo       int        `json:"version_no"`
+	Reason          string     `json:"reason"`
+	Status          string     `json:"status"`
+	RequestedBy     int64      `json:"requested_by"`
+	RequestedRole   string     `json:"requested_role"`
+	RequestedAt     time.Time  `json:"requested_at"`
+	DecidedBy       *int64     `json:"decided_by,omitempty"`
+	DecidedRole     *string    `json:"decided_role,omitempty"`
+	DecidedNote     *string    `json:"decided_note,omitempty"`
+	DecidedAt       *time.Time `json:"decided_at,omitempty"`
+	ApprovalCount   int        `json:"approval_count"`
+	ApprovedByRoles []string   `json:"approved_by_roles,omitempty"`
+}
+
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
 }
@@ -216,6 +251,15 @@ func normalizeQuestionType(v string) string {
 	switch v {
 	case "pg_tunggal", "multi_jawaban", "benar_salah_pernyataan":
 		return v
+	default:
+		return ""
+	}
+}
+
+func normalizeReopenActorRole(v string) string {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "admin", "proktor", "guru":
+		return strings.TrimSpace(strings.ToLower(v))
 	default:
 		return ""
 	}
@@ -770,6 +814,196 @@ func (s *Service) FinalizeQuestionVersion(ctx context.Context, questionID int64,
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return out, nil
+}
+
+func (s *Service) RequestReopenFinal(ctx context.Context, in RequestReopenFinalInput) (*ReopenFinalRequest, error) {
+	if in.QuestionID <= 0 || in.VersionNo <= 0 || in.RequestedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	in.Reason = strings.TrimSpace(in.Reason)
+	if in.Reason == "" {
+		return nil, ErrInvalidInput
+	}
+	in.RequestedRole = normalizeReopenActorRole(in.RequestedRole)
+	if in.RequestedRole == "" {
+		return nil, ErrReviewForbidden
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin reopen request tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var status string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status
+		FROM question_versions
+		WHERE question_id = $1 AND version_no = $2
+		FOR UPDATE
+	`, in.QuestionID, in.VersionNo).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("load version for reopen request: %w", err)
+	}
+	if status != "final" {
+		return nil, fmt.Errorf("%w: hanya versi final yang bisa diajukan reopen", ErrInvalidInput)
+	}
+
+	var usedInAttempts bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM exam_questions eq
+			JOIN attempts a ON a.exam_id = eq.exam_id
+			WHERE eq.question_id = $1
+			LIMIT 1
+		)
+	`, in.QuestionID).Scan(&usedInAttempts); err != nil {
+		return nil, fmt.Errorf("check version usage attempts: %w", err)
+	}
+	if usedInAttempts {
+		return nil, ErrReopenNotAllowed
+	}
+
+	var pendingCount int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM question_reopen_requests
+		WHERE question_id = $1
+		  AND version_no = $2
+		  AND status = 'pending'
+	`, in.QuestionID, in.VersionNo).Scan(&pendingCount); err != nil {
+		return nil, fmt.Errorf("check pending reopen requests: %w", err)
+	}
+	if pendingCount > 0 {
+		return nil, ErrReopenPending
+	}
+
+	var out ReopenFinalRequest
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO question_reopen_requests (
+			question_id, version_no, reason, status, requested_by, requested_role, requested_at, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, 'pending', $4, $5, now(), now(), now()
+		)
+		RETURNING id, question_id, version_no, reason, status, requested_by, requested_role, requested_at
+	`, in.QuestionID, in.VersionNo, in.Reason, in.RequestedBy, in.RequestedRole).Scan(
+		&out.ID,
+		&out.QuestionID,
+		&out.VersionNo,
+		&out.Reason,
+		&out.Status,
+		&out.RequestedBy,
+		&out.RequestedRole,
+		&out.RequestedAt,
+	); err != nil {
+		return nil, fmt.Errorf("insert reopen request: %w", err)
+	}
+	out.ApprovalCount = 0
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit reopen request tx: %w", err)
+	}
+	return &out, nil
+}
+
+func (s *Service) ApproveReopenFinal(ctx context.Context, in ApproveReopenFinalInput) (*ReopenFinalRequest, error) {
+	if in.QuestionID <= 0 || in.VersionNo <= 0 || in.ApproverID <= 0 {
+		return nil, ErrInvalidInput
+	}
+	in.Note = strings.TrimSpace(in.Note)
+	in.ApproverRole = normalizeReopenActorRole(in.ApproverRole)
+	if in.ApproverRole == "" {
+		return nil, ErrReviewForbidden
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin reopen approve tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var reqID int64
+	var reqStatus string
+	var reqRole string
+	var reqBy int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id, status, requested_role, requested_by
+		FROM question_reopen_requests
+		WHERE question_id = $1
+		  AND version_no = $2
+		ORDER BY requested_at DESC, id DESC
+		LIMIT 1
+		FOR UPDATE
+	`, in.QuestionID, in.VersionNo).Scan(&reqID, &reqStatus, &reqRole, &reqBy); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("load reopen request: %w", err)
+	}
+	if reqStatus != "pending" {
+		return nil, fmt.Errorf("%w: tidak ada request reopen yang menunggu persetujuan", ErrInvalidInput)
+	}
+	if reqBy == in.ApproverID {
+		return nil, fmt.Errorf("%w: pengaju tidak boleh menyetujui request sendiri", ErrReviewForbidden)
+	}
+	if reqRole == in.ApproverRole {
+		return nil, fmt.Errorf("%w: persetujuan harus dari peran berbeda", ErrReviewForbidden)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO question_reopen_approvals (
+			reopen_request_id, approver_id, approver_role, note, approved_at
+		) VALUES ($1,$2,$3,NULLIF($4,''),now())
+		ON CONFLICT (reopen_request_id, approver_id)
+		DO UPDATE SET note = EXCLUDED.note, approved_at = now()
+	`, reqID, in.ApproverID, in.ApproverRole, in.Note); err != nil {
+		return nil, fmt.Errorf("insert reopen approval: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE question_versions
+		SET status = 'revisi',
+			is_public = FALSE,
+			is_active = TRUE
+		WHERE question_id = $1
+		  AND version_no = $2
+	`, in.QuestionID, in.VersionNo); err != nil {
+		return nil, fmt.Errorf("reopen final version to revisi: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE question_versions
+		SET is_active = FALSE
+		WHERE question_id = $1
+		  AND version_no <> $2
+	`, in.QuestionID, in.VersionNo); err != nil {
+		return nil, fmt.Errorf("deactivate other versions after reopen: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE question_reopen_requests
+		SET status = 'approved',
+			decided_by = $2,
+			decided_role = $3,
+			decided_note = NULLIF($4,''),
+			decided_at = now(),
+			updated_at = now()
+		WHERE id = $1
+	`, reqID, in.ApproverID, in.ApproverRole, in.Note); err != nil {
+		return nil, fmt.Errorf("mark reopen request approved: %w", err)
+	}
+
+	out, err := s.loadReopenRequestTx(ctx, tx, reqID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit reopen approve tx: %w", err)
 	}
 	return out, nil
 }
@@ -1774,6 +2008,86 @@ func normalizeAndValidateOptions(questionType string, options []QuestionOptionIn
 		}
 	}
 	return out, correctKeys, nil
+}
+
+func (s *Service) loadReopenRequestTx(ctx context.Context, tx *sql.Tx, requestID int64) (*ReopenFinalRequest, error) {
+	var out ReopenFinalRequest
+	var decidedBy sql.NullInt64
+	var decidedRole sql.NullString
+	var decidedNote sql.NullString
+	var decidedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+			id,
+			question_id,
+			version_no,
+			reason,
+			status,
+			requested_by,
+			requested_role,
+			requested_at,
+			decided_by,
+			decided_role,
+			decided_note,
+			decided_at
+		FROM question_reopen_requests
+		WHERE id = $1
+	`, requestID).Scan(
+		&out.ID,
+		&out.QuestionID,
+		&out.VersionNo,
+		&out.Reason,
+		&out.Status,
+		&out.RequestedBy,
+		&out.RequestedRole,
+		&out.RequestedAt,
+		&decidedBy,
+		&decidedRole,
+		&decidedNote,
+		&decidedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrVersionNotFound
+		}
+		return nil, fmt.Errorf("load reopen request detail: %w", err)
+	}
+	if decidedBy.Valid {
+		out.DecidedBy = &decidedBy.Int64
+	}
+	if decidedRole.Valid {
+		out.DecidedRole = &decidedRole.String
+	}
+	if decidedNote.Valid {
+		out.DecidedNote = &decidedNote.String
+	}
+	if decidedAt.Valid {
+		out.DecidedAt = &decidedAt.Time
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT approver_role
+		FROM question_reopen_approvals
+		WHERE reopen_request_id = $1
+		ORDER BY approved_at ASC, id ASC
+	`, requestID)
+	if err != nil {
+		return nil, fmt.Errorf("list reopen approvals: %w", err)
+	}
+	defer rows.Close()
+	roles := make([]string, 0)
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, fmt.Errorf("scan reopen approval role: %w", err)
+		}
+		roles = append(roles, strings.TrimSpace(role))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reopen approvals: %w", err)
+	}
+	out.ApprovalCount = len(roles)
+	out.ApprovedByRoles = roles
+	return &out, nil
 }
 
 func scanQuestionVersion(scanner interface{ Scan(dest ...any) error }) (*QuestionVersion, error) {

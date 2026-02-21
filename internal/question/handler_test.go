@@ -25,6 +25,8 @@ type mockQuestionService struct {
 	updateVersionFn      func(ctx context.Context, in UpdateQuestionVersionInput) (*QuestionVersion, error)
 	deleteVersionFn      func(ctx context.Context, questionID int64, versionNo int) error
 	finalizeFn           func(ctx context.Context, questionID int64, versionNo int) (*QuestionVersion, error)
+	requestReopenFn      func(ctx context.Context, in RequestReopenFinalInput) (*ReopenFinalRequest, error)
+	approveReopenFn      func(ctx context.Context, in ApproveReopenFinalInput) (*ReopenFinalRequest, error)
 	listVersionsFn       func(ctx context.Context, questionID int64) ([]QuestionVersion, error)
 	createParallelFn     func(ctx context.Context, in CreateQuestionParallelInput) (*QuestionParallel, error)
 	listParallelsFn      func(ctx context.Context, examID int64, parallelGroup string) ([]QuestionParallel, error)
@@ -104,6 +106,20 @@ func (m *mockQuestionService) FinalizeQuestionVersion(ctx context.Context, quest
 		return nil, errors.New("not implemented")
 	}
 	return m.finalizeFn(ctx, questionID, versionNo)
+}
+
+func (m *mockQuestionService) RequestReopenFinal(ctx context.Context, in RequestReopenFinalInput) (*ReopenFinalRequest, error) {
+	if m.requestReopenFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.requestReopenFn(ctx, in)
+}
+
+func (m *mockQuestionService) ApproveReopenFinal(ctx context.Context, in ApproveReopenFinalInput) (*ReopenFinalRequest, error) {
+	if m.approveReopenFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.approveReopenFn(ctx, in)
 }
 
 func (m *mockQuestionService) ListQuestionVersions(ctx context.Context, questionID int64) ([]QuestionVersion, error) {

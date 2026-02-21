@@ -16,24 +16,25 @@ import (
 )
 
 var (
-	ErrInvalidInput         = errors.New("invalid input")
-	ErrExamNotFound         = errors.New("exam not found")
-	ErrSubjectNotFound      = errors.New("subject not found")
-	ErrAttemptNotFound      = errors.New("attempt not found")
-	ErrAttemptNotEditable   = errors.New("attempt is not editable")
-	ErrQuestionNotInExam    = errors.New("question not in exam")
-	ErrAttemptForbidden     = errors.New("attempt forbidden")
-	ErrAttemptNotFinal      = errors.New("attempt not final")
-	ErrResultPolicyDenied   = errors.New("result not available by review policy")
-	ErrInvalidEventType     = errors.New("invalid event type")
-	ErrExamTokenRequired    = errors.New("token ujian wajib diisi")
-	ErrExamTokenInvalid     = errors.New("token ujian tidak valid")
-	ErrExamTokenExpired     = errors.New("token ujian sudah kedaluwarsa")
-	ErrExamTokenUnavailable = errors.New("token ujian belum disiapkan proktor")
-	ErrExamNotAssigned      = errors.New("peserta tidak terdaftar pada ujian ini")
-	ErrExamCodeExists       = errors.New("kode ujian sudah digunakan")
-	ErrAssignmentFeature    = errors.New("fitur enroll ujian belum aktif di database")
-	ErrStudentDataMissing   = errors.New("data peserta belum lengkap (nomor peserta, nama, kelas, nisn, nama sekolah, npsn)")
+	ErrInvalidInput          = errors.New("invalid input")
+	ErrExamNotFound          = errors.New("exam not found")
+	ErrSubjectNotFound       = errors.New("subject not found")
+	ErrAttemptNotFound       = errors.New("attempt not found")
+	ErrAttemptNotEditable    = errors.New("attempt is not editable")
+	ErrQuestionNotInExam     = errors.New("question not in exam")
+	ErrAttemptForbidden      = errors.New("attempt forbidden")
+	ErrAttemptNotFinal       = errors.New("attempt not final")
+	ErrResultPolicyDenied    = errors.New("result not available by review policy")
+	ErrInvalidEventType      = errors.New("invalid event type")
+	ErrExamTokenRequired     = errors.New("token ujian wajib diisi")
+	ErrExamTokenInvalid      = errors.New("token ujian tidak valid")
+	ErrExamTokenExpired      = errors.New("token ujian sudah kedaluwarsa")
+	ErrExamTokenUnavailable  = errors.New("token ujian belum disiapkan proktor")
+	ErrExamNotAssigned       = errors.New("peserta tidak terdaftar pada ujian ini")
+	ErrExamCodeExists        = errors.New("kode ujian sudah digunakan")
+	ErrAssignmentFeature     = errors.New("fitur enroll ujian belum aktif di database")
+	ErrStudentDataMissing    = errors.New("data peserta belum lengkap (nomor peserta, nama, kelas, nisn, nama sekolah, npsn)")
+	ErrIncidentPolicyInvalid = errors.New("kebijakan insiden tidak valid")
 )
 
 type Service struct {
@@ -219,6 +220,26 @@ type UpsertExamQuestionInput struct {
 	Weight     float64
 }
 
+type UpsertExamQuestionIncidentInput struct {
+	ExamID             int64
+	QuestionID         int64
+	Policy             string
+	Reason             string
+	DecidedBy          int64
+	RecomputeSubmitted bool
+}
+
+type ExamQuestionIncidentResult struct {
+	ExamID             int64      `json:"exam_id"`
+	QuestionID         int64      `json:"question_id"`
+	Policy             string     `json:"policy"`
+	Reason             string     `json:"reason"`
+	IsActive           bool       `json:"is_active"`
+	DecidedBy          *int64     `json:"decided_by,omitempty"`
+	DecidedAt          *time.Time `json:"decided_at,omitempty"`
+	RecomputedAttempts int        `json:"recomputed_attempts"`
+}
+
 type AttemptResultItem struct {
 	QuestionID  int64            `json:"question_id"`
 	Selected    []string         `json:"selected"`
@@ -281,12 +302,13 @@ type attemptRow struct {
 }
 
 type questionEvalRow struct {
-	QuestionID   int64
-	QuestionType string
-	Weight       float64
-	Payload      []byte
-	AnswerKey    []byte
-	CorrectKeys  []string
+	QuestionID     int64
+	QuestionType   string
+	Weight         float64
+	Payload        []byte
+	AnswerKey      []byte
+	CorrectKeys    []string
+	IncidentPolicy string
 }
 
 func NewService(db *sql.DB, defaultExamMinutes int) *Service {
@@ -1250,6 +1272,114 @@ func (s *Service) DeleteExamQuestion(ctx context.Context, examID, questionID int
 	return nil
 }
 
+func (s *Service) UpsertExamQuestionIncident(ctx context.Context, in UpsertExamQuestionIncidentInput) (*ExamQuestionIncidentResult, error) {
+	if in.ExamID <= 0 || in.QuestionID <= 0 || in.DecidedBy <= 0 {
+		return nil, ErrInvalidInput
+	}
+	policy := normalizeIncidentPolicy(in.Policy)
+	if policy == "" {
+		return nil, ErrIncidentPolicyInvalid
+	}
+	in.Reason = strings.TrimSpace(in.Reason)
+	if in.Reason == "" {
+		return nil, ErrInvalidInput
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin incident tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM exam_questions
+			WHERE exam_id = $1
+			  AND question_id = $2
+		)
+	`, in.ExamID, in.QuestionID).Scan(&exists); err != nil {
+		return nil, fmt.Errorf("validate incident question in exam: %w", err)
+	}
+	if !exists {
+		return nil, ErrQuestionNotInExam
+	}
+
+	var out ExamQuestionIncidentResult
+	var decidedBy sql.NullInt64
+	var decidedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO exam_question_incidents (
+			exam_id, question_id, policy, reason, is_active, decided_by, decided_at, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, TRUE, $5, now(), now(), now()
+		)
+		ON CONFLICT (exam_id, question_id)
+		DO UPDATE SET
+			policy = EXCLUDED.policy,
+			reason = EXCLUDED.reason,
+			is_active = TRUE,
+			decided_by = EXCLUDED.decided_by,
+			decided_at = now(),
+			updated_at = now()
+		RETURNING exam_id, question_id, policy, reason, is_active, decided_by, decided_at
+	`, in.ExamID, in.QuestionID, policy, in.Reason, in.DecidedBy).Scan(
+		&out.ExamID,
+		&out.QuestionID,
+		&out.Policy,
+		&out.Reason,
+		&out.IsActive,
+		&decidedBy,
+		&decidedAt,
+	); err != nil {
+		return nil, fmt.Errorf("upsert incident: %w", err)
+	}
+	if decidedBy.Valid {
+		out.DecidedBy = &decidedBy.Int64
+	}
+	if decidedAt.Valid {
+		out.DecidedAt = &decidedAt.Time
+	}
+
+	if in.RecomputeSubmitted {
+		rows, err := tx.QueryContext(ctx, `
+			SELECT id
+			FROM attempts
+			WHERE exam_id = $1
+			  AND status IN ('submitted','expired')
+		`, in.ExamID)
+		if err != nil {
+			return nil, fmt.Errorf("list attempts for recompute: %w", err)
+		}
+		defer rows.Close()
+
+		attemptIDs := make([]int64, 0)
+		for rows.Next() {
+			var attemptID int64
+			if err := rows.Scan(&attemptID); err != nil {
+				return nil, fmt.Errorf("scan recompute attempt: %w", err)
+			}
+			attemptIDs = append(attemptIDs, attemptID)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate recompute attempts: %w", err)
+		}
+
+		for _, attemptID := range attemptIDs {
+			if err := s.recomputeFinalizedAttemptTx(ctx, tx, attemptID); err != nil {
+				return nil, err
+			}
+			out.RecomputedAttempts++
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit incident tx: %w", err)
+	}
+	return &out, nil
+}
+
 func (s *Service) GetAttemptSummary(ctx context.Context, attemptID int64) (*AttemptSummary, error) {
 	row, err := s.loadAttemptRow(ctx, s.db, attemptID)
 	if err != nil {
@@ -1444,6 +1574,17 @@ func normalizeReviewPolicy(input string) string {
 		return "after_exam_end"
 	default:
 		return "after_submit"
+	}
+}
+
+func normalizeIncidentPolicy(input string) string {
+	switch strings.TrimSpace(strings.ToLower(input)) {
+	case "drop":
+		return "drop"
+	case "bonus_all":
+		return "bonus_all"
+	default:
+		return ""
 	}
 }
 
@@ -1825,16 +1966,11 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 	totalQuestions := len(evals)
 	answered := 0
 	totalCorrect := 0
+	totalWrong := 0
 	score := 0.0
 
 	for _, ev := range evals {
-		result := ScoreQuestion(ScoreInput{
-			QuestionType:  ev.QuestionType,
-			AnswerKey:     ev.AnswerKey,
-			AnswerPayload: ev.Payload,
-			CorrectKeys:   ev.CorrectKeys,
-			Weight:        ev.Weight,
-		})
+		result := scoreQuestionWithIncident(ev)
 
 		if result.Answered {
 			answered++
@@ -1842,6 +1978,8 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 		if result.IsCorrect != nil && *result.IsCorrect {
 			totalCorrect++
 			score += result.EarnedScore
+		} else if result.IsCorrect != nil && !*result.IsCorrect {
+			totalWrong++
 		} else if result.EarnedScore > 0 {
 			score += result.EarnedScore
 		}
@@ -1874,7 +2012,6 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 		}
 	}
 
-	totalWrong := answered - totalCorrect
 	totalUnanswered := totalQuestions - answered
 
 	if _, err := tx.ExecContext(ctx, `
@@ -1915,6 +2052,106 @@ func (s *Service) finalizeAttempt(ctx context.Context, attemptID int64, finalSta
 	return summary, nil
 }
 
+func (s *Service) recomputeFinalizedAttemptTx(ctx context.Context, tx *sql.Tx, attemptID int64) error {
+	row, err := s.loadAttemptRowForUpdate(ctx, tx, attemptID)
+	if err != nil {
+		return err
+	}
+	if row.Status == "in_progress" {
+		return nil
+	}
+
+	evals, err := s.loadQuestionEvaluations(ctx, tx, row.ExamID, row.ID)
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM attempt_scores WHERE attempt_id = $1`, row.ID); err != nil {
+		return fmt.Errorf("clear attempt_scores recompute: %w", err)
+	}
+
+	totalQuestions := len(evals)
+	answered := 0
+	totalCorrect := 0
+	totalWrong := 0
+	score := 0.0
+
+	for _, ev := range evals {
+		result := scoreQuestionWithIncident(ev)
+		if result.Answered {
+			answered++
+		}
+		if result.IsCorrect != nil && *result.IsCorrect {
+			totalCorrect++
+			score += result.EarnedScore
+		} else if result.IsCorrect != nil && !*result.IsCorrect {
+			totalWrong++
+		} else if result.EarnedScore > 0 {
+			score += result.EarnedScore
+		}
+
+		var isCorrectPtr interface{}
+		if result.IsCorrect != nil {
+			isCorrectPtr = *result.IsCorrect
+		}
+		feedback := map[string]interface{}{
+			"selected":  result.Selected,
+			"correct":   result.Correct,
+			"reason":    result.Reason,
+			"breakdown": result.Breakdown,
+		}
+		feedbackJSON, _ := json.Marshal(feedback)
+
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO attempt_scores (
+				attempt_id, question_id, earned_score, is_correct, feedback
+			) VALUES ($1,$2,$3,$4,$5::jsonb)
+		`, row.ID, ev.QuestionID, result.EarnedScore, isCorrectPtr, feedbackJSON); err != nil {
+			return fmt.Errorf("insert attempt_score recompute: %w", err)
+		}
+	}
+
+	totalUnanswered := totalQuestions - answered
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE attempts
+		SET score = $2,
+			total_correct = $3,
+			total_wrong = $4,
+			total_unanswered = $5
+		WHERE id = $1
+	`, row.ID, score, totalCorrect, totalWrong, totalUnanswered); err != nil {
+		return fmt.Errorf("update attempt recompute: %w", err)
+	}
+	return nil
+}
+
+func scoreQuestionWithIncident(ev questionEvalRow) ScoreResult {
+	switch normalizeIncidentPolicy(ev.IncidentPolicy) {
+	case "drop":
+		return ScoreResult{
+			Answered:    false,
+			IsCorrect:   nil,
+			EarnedScore: 0,
+			Reason:      "incident_drop",
+		}
+	case "bonus_all":
+		return ScoreResult{
+			Answered:    true,
+			IsCorrect:   boolPtr(true),
+			EarnedScore: ev.Weight,
+			Reason:      "incident_bonus_all",
+		}
+	default:
+		return ScoreQuestion(ScoreInput{
+			QuestionType:  ev.QuestionType,
+			AnswerKey:     ev.AnswerKey,
+			AnswerPayload: ev.Payload,
+			CorrectKeys:   ev.CorrectKeys,
+			Weight:        ev.Weight,
+		})
+	}
+}
+
 func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, examID, attemptID int64) ([]questionEvalRow, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT
@@ -1923,6 +2160,7 @@ func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, exam
 			eq.weight,
 			COALESCE(aa.answer_payload, '{}'::jsonb) AS answer_payload,
 			COALESCE(qv.answer_key, '{}'::jsonb) AS answer_key,
+			COALESCE(i.policy, '') AS incident_policy,
 			COALESCE(
 				json_agg(qo.option_key) FILTER (WHERE qo.is_correct),
 				'[]'::json
@@ -1944,8 +2182,12 @@ func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, exam
 		) qv ON TRUE
 		LEFT JOIN question_options qo
 			ON qo.question_id = eq.question_id
+		LEFT JOIN exam_question_incidents i
+			ON i.exam_id = eq.exam_id
+			AND i.question_id = eq.question_id
+			AND i.is_active = TRUE
 		WHERE eq.exam_id = $2
-		GROUP BY eq.question_id, qn.question_type, eq.weight, aa.answer_payload, qv.answer_key, eq.seq_no
+		GROUP BY eq.question_id, qn.question_type, eq.weight, aa.answer_payload, qv.answer_key, i.policy, eq.seq_no
 		ORDER BY eq.seq_no
 	`, attemptID, examID)
 	if err != nil {
@@ -1957,7 +2199,7 @@ func (s *Service) loadQuestionEvaluations(ctx context.Context, q queryable, exam
 	for rows.Next() {
 		var r questionEvalRow
 		var correctKeysJSON []byte
-		if err := rows.Scan(&r.QuestionID, &r.QuestionType, &r.Weight, &r.Payload, &r.AnswerKey, &correctKeysJSON); err != nil {
+		if err := rows.Scan(&r.QuestionID, &r.QuestionType, &r.Weight, &r.Payload, &r.AnswerKey, &r.IncidentPolicy, &correctKeysJSON); err != nil {
 			return nil, fmt.Errorf("scan evaluation row: %w", err)
 		}
 		if len(correctKeysJSON) > 0 {

@@ -33,6 +33,8 @@ type questionService interface {
 	UpdateQuestionVersion(ctx context.Context, in UpdateQuestionVersionInput) (*QuestionVersion, error)
 	DeleteQuestionVersion(ctx context.Context, questionID int64, versionNo int) error
 	FinalizeQuestionVersion(ctx context.Context, questionID int64, versionNo int) (*QuestionVersion, error)
+	RequestReopenFinal(ctx context.Context, in RequestReopenFinalInput) (*ReopenFinalRequest, error)
+	ApproveReopenFinal(ctx context.Context, in ApproveReopenFinalInput) (*ReopenFinalRequest, error)
 	ListQuestionVersions(ctx context.Context, questionID int64) ([]QuestionVersion, error)
 	CreateQuestionParallel(ctx context.Context, in CreateQuestionParallelInput) (*QuestionParallel, error)
 	ListQuestionParallels(ctx context.Context, examID int64, parallelGroup string) ([]QuestionParallel, error)
@@ -97,6 +99,14 @@ type updateQuestionVersionRequest struct {
 	DurationSeconds *int                  `json:"duration_seconds"`
 	Weight          *float64              `json:"weight"`
 	ChangeNote      *string               `json:"change_note"`
+}
+
+type requestReopenFinalRequest struct {
+	Reason string `json:"reason"`
+}
+
+type approveReopenFinalRequest struct {
+	Note string `json:"note"`
 }
 
 type createQuestionParallelRequest struct {
@@ -608,6 +618,100 @@ func (h *Handler) FinalizeQuestionVersion(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: item})
+}
+
+func (h *Handler) RequestReopenFinal(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	questionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || questionID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid question id"})
+		return
+	}
+	versionNo, err := strconv.Atoi(chi.URLParam(r, "version"))
+	if err != nil || versionNo <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid version"})
+		return
+	}
+
+	var req requestReopenFinalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	out, err := h.svc.RequestReopenFinal(r.Context(), RequestReopenFinalInput{
+		QuestionID:    questionID,
+		VersionNo:     versionNo,
+		Reason:        req.Reason,
+		RequestedBy:   user.ID,
+		RequestedRole: user.Role,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidInput), errors.Is(err, ErrReopenPending), errors.Is(err, ErrReopenNotAllowed):
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrReviewForbidden):
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrVersionNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusCreated, apiResponse{OK: true, Data: out})
+}
+
+func (h *Handler) ApproveReopenFinal(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	questionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || questionID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid question id"})
+		return
+	}
+	versionNo, err := strconv.Atoi(chi.URLParam(r, "version"))
+	if err != nil || versionNo <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid version"})
+		return
+	}
+
+	var req approveReopenFinalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	out, err := h.svc.ApproveReopenFinal(r.Context(), ApproveReopenFinalInput{
+		QuestionID:   questionID,
+		VersionNo:    versionNo,
+		ApproverID:   user.ID,
+		ApproverRole: user.Role,
+		Note:         req.Note,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidInput):
+			writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrReviewForbidden):
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrVersionNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: err.Error()})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: out})
 }
 
 func (h *Handler) UpdateQuestionVersion(w http.ResponseWriter, r *http.Request) {

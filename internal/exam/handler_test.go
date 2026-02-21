@@ -33,6 +33,7 @@ type mockExamService struct {
 	replaceExamAssignmentsByClassFn func(ctx context.Context, in ReplaceExamAssignmentsByClassInput) ([]ExamAssignmentUser, error)
 	listExamQuestionsFn             func(ctx context.Context, examID int64) ([]ExamQuestionManageItem, error)
 	upsertExamQuestionFn            func(ctx context.Context, in UpsertExamQuestionInput) (*ExamQuestionManageItem, error)
+	upsertExamQuestionIncidentFn    func(ctx context.Context, in UpsertExamQuestionIncidentInput) (*ExamQuestionIncidentResult, error)
 	deleteExamQuestionFn            func(ctx context.Context, examID, questionID int64) error
 	getAttemptSummaryFn             func(ctx context.Context, attemptID int64) (*AttemptSummary, error)
 	getAttemptQuestionFn            func(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error)
@@ -161,6 +162,13 @@ func (m *mockExamService) UpsertExamQuestion(ctx context.Context, in UpsertExamQ
 		return nil, errors.New("not implemented")
 	}
 	return m.upsertExamQuestionFn(ctx, in)
+}
+
+func (m *mockExamService) UpsertExamQuestionIncident(ctx context.Context, in UpsertExamQuestionIncidentInput) (*ExamQuestionIncidentResult, error) {
+	if m.upsertExamQuestionIncidentFn == nil {
+		return nil, errors.New("not implemented")
+	}
+	return m.upsertExamQuestionIncidentFn(ctx, in)
 }
 
 func (m *mockExamService) DeleteExamQuestion(ctx context.Context, examID, questionID int64) error {

@@ -37,6 +37,7 @@ type examService interface {
 	ReplaceExamAssignmentsByClass(ctx context.Context, in ReplaceExamAssignmentsByClassInput) ([]ExamAssignmentUser, error)
 	ListExamQuestions(ctx context.Context, examID int64) ([]ExamQuestionManageItem, error)
 	UpsertExamQuestion(ctx context.Context, in UpsertExamQuestionInput) (*ExamQuestionManageItem, error)
+	UpsertExamQuestionIncident(ctx context.Context, in UpsertExamQuestionIncidentInput) (*ExamQuestionIncidentResult, error)
 	DeleteExamQuestion(ctx context.Context, examID, questionID int64) error
 	GetAttemptSummary(ctx context.Context, attemptID int64) (*AttemptSummary, error)
 	GetAttemptQuestion(ctx context.Context, attemptID int64, questionNo int) (*AttemptQuestion, error)
@@ -105,6 +106,13 @@ type upsertExamQuestionRequest struct {
 	QuestionID int64   `json:"question_id"`
 	SeqNo      int     `json:"seq_no"`
 	Weight     float64 `json:"weight"`
+}
+
+type upsertExamQuestionIncidentRequest struct {
+	QuestionID         int64  `json:"question_id"`
+	Policy             string `json:"policy"`
+	Reason             string `json:"reason"`
+	RecomputeSubmitted bool   `json:"recompute_submitted"`
 }
 
 func NewHandler(svc examService) *Handler {
@@ -561,6 +569,49 @@ func (h *Handler) DeleteExamQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, response{OK: true, Data: map[string]string{"status": "deleted"}})
+}
+
+func (h *Handler) UpsertExamQuestionIncident(w http.ResponseWriter, r *http.Request) {
+	examID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || examID <= 0 {
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid exam id"})
+		return
+	}
+
+	var req upsertExamQuestionIncidentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "invalid request body"})
+		return
+	}
+
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok || user.ID <= 0 {
+		writeJSON(w, r, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		return
+	}
+
+	out, err := h.svc.UpsertExamQuestionIncident(r.Context(), UpsertExamQuestionIncidentInput{
+		ExamID:             examID,
+		QuestionID:         req.QuestionID,
+		Policy:             req.Policy,
+		Reason:             req.Reason,
+		DecidedBy:          user.ID,
+		RecomputeSubmitted: req.RecomputeSubmitted,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidInput), errors.Is(err, ErrIncidentPolicyInvalid):
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrExamNotFound):
+			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: "exam not found"})
+		case errors.Is(err, ErrQuestionNotInExam):
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: "question not in exam"})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, response{OK: true, Data: out})
 }
 
 func (h *Handler) GenerateExamToken(w http.ResponseWriter, r *http.Request) {
