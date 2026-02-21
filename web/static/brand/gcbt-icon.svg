@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">g-cbt icon</title>
+  <desc id="desc">Rounded square monogram icon for g-cbt.</desc>
+  <defs>
+    <linearGradient id="iconGrad" x1="14%" y1="10%" x2="88%" y2="92%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="56%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="#020617"/>
+  <rect x="22" y="22" width="212" height="212" rx="48" fill="url(#iconGrad)"/>
+  <path d="M72 111C72 79 97 54 129 54H174V88H129C117 88 106 98 106 111V145C106 158 117 168 129 168H157V137H191V206H129C97 206 72 181 72 149V111Z" fill="#E0F2FE"/>
+  <circle cx="179" cy="76" r="10" fill="#BAE6FD"/>
+</svg>

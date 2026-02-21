@@ -38,6 +38,22 @@ body {
 .brand {
     color: #fff;
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.brand img {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(8, 145, 178, 0.35);
+}
+
+.brand span {
+    letter-spacing: 0.2px;
+    font-weight: 800;
+    text-transform: lowercase;
 }
 
 .topbar h1 {
@@ -186,20 +202,11 @@ textarea {
     z-index: 2;
 }
 
-.landing-brand-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 84px;
-    min-height: 84px;
-    border-radius: 26px;
-    background: linear-gradient(160deg, #1d4ed8, #0ea5e9);
-    color: #eff6ff;
-    font-size: 23px;
-    font-weight: 800;
-    letter-spacing: 0.3px;
-    margin-bottom: 22px;
-    box-shadow: 0 14px 40px rgba(14, 165, 233, 0.27);
+.landing-brand-logo {
+    width: min(420px, 84vw);
+    height: auto;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 18px 48px rgba(14, 165, 233, 0.2));
 }
 
 .landing-title {
@@ -441,6 +448,10 @@ textarea {
 @media (max-width: 768px) {
     .landing-main {
         min-height: 72vh;
+    }
+
+    .landing-brand-logo {
+        width: min(340px, 88vw);
     }
 
     .landing-btn-primary {

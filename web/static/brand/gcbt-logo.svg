@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="220" viewBox="0 0 760 220" role="img" aria-labelledby="title desc">
+  <title id="title">g-cbt logo</title>
+  <desc id="desc">Modern logo for g-cbt with geometric monogram and wordmark.</desc>
+  <defs>
+    <linearGradient id="gcbtGrad" x1="12%" y1="8%" x2="84%" y2="90%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="52%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="gcbtText" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#E2E8F0"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="204" height="204" rx="52" fill="#020617"/>
+  <rect x="16" y="16" width="188" height="188" rx="44" fill="url(#gcbtGrad)"/>
+  <path d="M58 95C58 67 80 46 108 46H148V76H108C97 76 88 84 88 95V125C88 136 97 144 108 144H132V117H162V174H108C80 174 58 153 58 125V95Z" fill="#E0F2FE"/>
+  <circle cx="152" cy="65" r="9" fill="#BAE6FD"/>
+
+  <g fill="url(#gcbtText)">
+    <path d="M284 136C260 136 243 119 243 95C243 71 260 54 284 54C303 54 318 65 323 82H297C294 76 289 73 283 73C272 73 264 82 264 95C264 108 272 117 284 117C292 117 299 113 302 106H284V89H327V101C321 121 305 136 284 136Z"/>
+    <path d="M358 133V58H379V85C384 80 392 77 401 77C420 77 433 90 433 108C433 126 420 139 401 139C391 139 383 135 378 129V133H358ZM395 121C404 121 412 114 412 108C412 102 404 95 395 95C387 95 379 102 379 108C379 114 387 121 395 121Z"/>
+    <path d="M443 108C443 90 457 77 477 77C495 77 509 87 511 104H491C489 99 484 95 477 95C468 95 463 101 463 108C463 115 468 121 477 121C484 121 489 117 491 112H511C509 129 495 139 477 139C457 139 443 126 443 108Z"/>
+    <path d="M544 133C530 133 521 125 521 111V96H511V79H521V63H542V79H558V96H542V108C542 114 545 116 550 116H558V133H544Z"/>
+  </g>
+</svg>
