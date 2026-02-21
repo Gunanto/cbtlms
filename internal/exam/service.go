@@ -16,22 +16,24 @@ import (
 )
 
 var (
-	ErrInvalidInput       = errors.New("invalid input")
-	ErrExamNotFound       = errors.New("exam not found")
-	ErrSubjectNotFound    = errors.New("subject not found")
-	ErrAttemptNotFound    = errors.New("attempt not found")
-	ErrAttemptNotEditable = errors.New("attempt is not editable")
-	ErrQuestionNotInExam  = errors.New("question not in exam")
-	ErrAttemptForbidden   = errors.New("attempt forbidden")
-	ErrAttemptNotFinal    = errors.New("attempt not final")
-	ErrResultPolicyDenied = errors.New("result not available by review policy")
-	ErrInvalidEventType   = errors.New("invalid event type")
-	ErrExamTokenRequired  = errors.New("token ujian wajib diisi")
-	ErrExamTokenInvalid   = errors.New("token ujian tidak valid")
-	ErrExamTokenExpired   = errors.New("token ujian sudah kedaluwarsa")
-	ErrExamNotAssigned    = errors.New("peserta tidak terdaftar pada ujian ini")
-	ErrExamCodeExists     = errors.New("kode ujian sudah digunakan")
-	ErrAssignmentFeature  = errors.New("fitur enroll ujian belum aktif di database")
+	ErrInvalidInput         = errors.New("invalid input")
+	ErrExamNotFound         = errors.New("exam not found")
+	ErrSubjectNotFound      = errors.New("subject not found")
+	ErrAttemptNotFound      = errors.New("attempt not found")
+	ErrAttemptNotEditable   = errors.New("attempt is not editable")
+	ErrQuestionNotInExam    = errors.New("question not in exam")
+	ErrAttemptForbidden     = errors.New("attempt forbidden")
+	ErrAttemptNotFinal      = errors.New("attempt not final")
+	ErrResultPolicyDenied   = errors.New("result not available by review policy")
+	ErrInvalidEventType     = errors.New("invalid event type")
+	ErrExamTokenRequired    = errors.New("token ujian wajib diisi")
+	ErrExamTokenInvalid     = errors.New("token ujian tidak valid")
+	ErrExamTokenExpired     = errors.New("token ujian sudah kedaluwarsa")
+	ErrExamTokenUnavailable = errors.New("token ujian belum disiapkan proktor")
+	ErrExamNotAssigned      = errors.New("peserta tidak terdaftar pada ujian ini")
+	ErrExamCodeExists       = errors.New("kode ujian sudah digunakan")
+	ErrAssignmentFeature    = errors.New("fitur enroll ujian belum aktif di database")
+	ErrStudentDataMissing   = errors.New("data peserta belum lengkap (nomor peserta, nama, kelas, nisn, nama sekolah, npsn)")
 )
 
 type Service struct {
@@ -99,12 +101,13 @@ type UpdateSubjectInput struct {
 }
 
 type ExamOption struct {
-	ID           int64      `json:"id"`
-	Code         string     `json:"code"`
-	Title        string     `json:"title"`
-	SubjectID    int64      `json:"subject_id"`
-	EndAt        *time.Time `json:"end_at,omitempty"`
-	ReviewPolicy string     `json:"review_policy"`
+	ID            int64      `json:"id"`
+	Code          string     `json:"code"`
+	Title         string     `json:"title"`
+	SubjectID     int64      `json:"subject_id"`
+	EndAt         *time.Time `json:"end_at,omitempty"`
+	ReviewPolicy  string     `json:"review_policy"`
+	TokenRequired bool       `json:"token_required"`
 }
 
 type ExamAdminRecord struct {
@@ -294,6 +297,10 @@ func NewService(db *sql.DB, defaultExamMinutes int) *Service {
 }
 
 func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64, examToken string) (*Attempt, error) {
+	if err := s.ensureStudentAttemptProfileComplete(ctx, studentID); err != nil {
+		return nil, err
+	}
+
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, exam_id, student_id, status, started_at, expires_at
 		FROM attempts
@@ -349,18 +356,19 @@ func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64, exa
 			return nil, ErrExamNotAssigned
 		}
 	}
-	if examTokenHash.Valid && strings.TrimSpace(examTokenHash.String) != "" {
-		now := time.Now()
-		if !examTokenExpires.Valid || now.After(examTokenExpires.Time) {
-			return nil, ErrExamTokenExpired
-		}
-		inputToken := normalizeExamToken(examToken)
-		if inputToken == "" {
-			return nil, ErrExamTokenRequired
-		}
-		if subtle.ConstantTimeCompare([]byte(hashExamToken(inputToken)), []byte(examTokenHash.String)) != 1 {
-			return nil, ErrExamTokenInvalid
-		}
+	inputToken := normalizeExamToken(examToken)
+	if inputToken == "" {
+		return nil, ErrExamTokenRequired
+	}
+	if !examTokenHash.Valid || strings.TrimSpace(examTokenHash.String) == "" {
+		return nil, ErrExamTokenUnavailable
+	}
+	now := time.Now()
+	if !examTokenExpires.Valid || now.After(examTokenExpires.Time) {
+		return nil, ErrExamTokenExpired
+	}
+	if subtle.ConstantTimeCompare([]byte(hashExamToken(inputToken)), []byte(examTokenHash.String)) != 1 {
+		return nil, ErrExamTokenInvalid
 	}
 
 	row = s.db.QueryRowContext(ctx, `
@@ -386,6 +394,58 @@ func (s *Service) StartAttempt(ctx context.Context, examID, studentID int64, exa
 	}
 
 	return &created, nil
+}
+
+func (s *Service) ensureStudentAttemptProfileComplete(ctx context.Context, studentID int64) error {
+	if studentID <= 0 {
+		return ErrInvalidInput
+	}
+
+	var role string
+	var fullName string
+	var participantNo string
+	var nisn string
+	var schoolName string
+	var schoolCode string
+	var className string
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			u.role,
+			COALESCE(NULLIF(btrim(u.full_name), ''), ''),
+			COALESCE(NULLIF(btrim(u.participant_no), ''), ''),
+			COALESCE(NULLIF(btrim(u.nisn), ''), ''),
+			COALESCE(NULLIF(btrim(enr.school_name), ''), ''),
+			COALESCE(NULLIF(btrim(enr.school_code), ''), ''),
+			COALESCE(NULLIF(btrim(enr.class_name), ''), '')
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT
+				s.name AS school_name,
+				s.code AS school_code,
+				c.name AS class_name
+			FROM enrollments e
+			JOIN schools s ON s.id = e.school_id
+			JOIN classes c ON c.id = e.class_id
+			WHERE e.user_id = u.id
+			ORDER BY e.enrolled_at DESC, e.id DESC
+			LIMIT 1
+		) enr ON TRUE
+		WHERE u.id = $1
+		  AND u.is_active = TRUE
+	`, studentID).Scan(&role, &fullName, &participantNo, &nisn, &schoolName, &schoolCode, &className); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrAttemptForbidden
+		}
+		return fmt.Errorf("load student profile: %w", err)
+	}
+	if role != "siswa" {
+		return ErrAttemptForbidden
+	}
+
+	if participantNo == "" || fullName == "" || className == "" || nisn == "" || schoolName == "" || schoolCode == "" {
+		return ErrStudentDataMissing
+	}
+	return nil
 }
 
 func (s *Service) ListExamsForToken(ctx context.Context) ([]ExamTokenExam, error) {
@@ -1446,7 +1506,14 @@ func (s *Service) ListExamsBySubject(ctx context.Context, subjectID int64) ([]Ex
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, code, title, subject_id, end_at, review_policy
+		SELECT
+			id,
+			code,
+			title,
+			subject_id,
+			end_at,
+			review_policy,
+			(exam_token_hash IS NOT NULL AND btrim(exam_token_hash) <> '') AS token_required
 		FROM exams
 		WHERE subject_id = $1
 		  AND is_active = TRUE
@@ -1461,7 +1528,15 @@ func (s *Service) ListExamsBySubject(ctx context.Context, subjectID int64) ([]Ex
 	for rows.Next() {
 		var it ExamOption
 		var endAt sql.NullTime
-		if err := rows.Scan(&it.ID, &it.Code, &it.Title, &it.SubjectID, &endAt, &it.ReviewPolicy); err != nil {
+		if err := rows.Scan(
+			&it.ID,
+			&it.Code,
+			&it.Title,
+			&it.SubjectID,
+			&endAt,
+			&it.ReviewPolicy,
+			&it.TokenRequired,
+		); err != nil {
 			return nil, fmt.Errorf("scan exam: %w", err)
 		}
 		if endAt.Valid {

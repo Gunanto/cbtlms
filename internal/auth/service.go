@@ -98,8 +98,11 @@ type AdminUserRecord struct {
 	Email         *string    `json:"email,omitempty"`
 	FullName      string     `json:"full_name"`
 	Role          string     `json:"role"`
+	ParticipantNo *string    `json:"participant_no,omitempty"`
+	NISN          *string    `json:"nisn,omitempty"`
 	SchoolID      *int64     `json:"school_id,omitempty"`
 	SchoolName    *string    `json:"school_name,omitempty"`
+	SchoolCode    *string    `json:"school_code,omitempty"`
 	ClassID       *int64     `json:"class_id,omitempty"`
 	ClassGrade    *string    `json:"class_grade_level,omitempty"`
 	ClassName     *string    `json:"class_name,omitempty"`
@@ -117,23 +120,36 @@ type AdminDashboardStats struct {
 	SchoolCount  int64 `json:"school_count"`
 }
 
+type StudentExamProfile struct {
+	ParticipantNo string `json:"participant_no"`
+	FullName      string `json:"full_name"`
+	ClassName     string `json:"class_name"`
+	NISN          string `json:"nisn"`
+	SchoolName    string `json:"school_name"`
+	SchoolCode    string `json:"school_code"`
+}
+
 type AdminCreateUserInput struct {
-	Username string
-	Email    string
-	Password string
-	FullName string
-	Role     string
-	SchoolID *int64
-	ClassID  *int64
+	Username      string
+	Email         string
+	Password      string
+	FullName      string
+	Role          string
+	ParticipantNo string
+	NISN          string
+	SchoolID      *int64
+	ClassID       *int64
 }
 
 type AdminUpdateUserInput struct {
-	FullName string
-	Email    string
-	Role     string
-	Password string
-	SchoolID *int64
-	ClassID  *int64
+	FullName      string
+	Email         string
+	Role          string
+	Password      string
+	ParticipantNo string
+	NISN          string
+	SchoolID      *int64
+	ClassID       *int64
 }
 
 type UserClassPlacementInput struct {
@@ -814,6 +830,57 @@ func (s *Service) RevokeSession(ctx context.Context, token string) error {
 	return nil
 }
 
+func (s *Service) GetStudentExamProfile(ctx context.Context, userID int64) (*StudentExamProfile, error) {
+	if userID <= 0 {
+		return nil, ErrUnauthorized
+	}
+
+	var role string
+	var out StudentExamProfile
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+			u.role,
+			COALESCE(NULLIF(btrim(u.participant_no), ''), ''),
+			COALESCE(NULLIF(btrim(u.full_name), ''), ''),
+			COALESCE(NULLIF(btrim(enr.class_name), ''), ''),
+			COALESCE(NULLIF(btrim(u.nisn), ''), ''),
+			COALESCE(NULLIF(btrim(enr.school_name), ''), ''),
+			COALESCE(NULLIF(btrim(enr.school_code), ''), '')
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT
+				s.name AS school_name,
+				s.code AS school_code,
+				c.name AS class_name
+			FROM enrollments e
+			JOIN schools s ON s.id = e.school_id
+			JOIN classes c ON c.id = e.class_id
+			WHERE e.user_id = u.id
+			ORDER BY e.enrolled_at DESC, e.id DESC
+			LIMIT 1
+		) enr ON TRUE
+		WHERE u.id = $1
+		  AND u.is_active = TRUE
+	`, userID).Scan(
+		&role,
+		&out.ParticipantNo,
+		&out.FullName,
+		&out.ClassName,
+		&out.NISN,
+		&out.SchoolName,
+		&out.SchoolCode,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("query student exam profile: %w", err)
+	}
+	if role != "siswa" {
+		return nil, ErrForbidden
+	}
+	return &out, nil
+}
+
 func (s *Service) getActiveUserTx(ctx context.Context, tx *sql.Tx, userID int64) (*User, error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, username, email, full_name, role, account_status, approved_at
@@ -872,8 +939,11 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 			u.email,
 			u.full_name,
 			u.role,
+			u.participant_no,
+			u.nisn,
 			sch.school_id,
 			sch.name AS school_name,
+			sch.code AS school_code,
 			sch.class_id,
 			sch.grade_level,
 			sch.class_name,
@@ -885,6 +955,7 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 		LEFT JOIN LATERAL (
 			SELECT
 				s.name,
+				s.code,
 				e.school_id,
 				e.class_id,
 				c.grade_level,
@@ -902,6 +973,8 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 			OR u.username ILIKE '%' || $2 || '%'
 			OR u.full_name ILIKE '%' || $2 || '%'
 			OR COALESCE(u.email,'') ILIKE '%' || $2 || '%'
+			OR COALESCE(u.participant_no,'') ILIKE '%' || $2 || '%'
+			OR COALESCE(u.nisn,'') ILIKE '%' || $2 || '%'
 			OR COALESCE(sch.name,'') ILIKE '%' || $2 || '%'
 		  )
 		ORDER BY u.created_at DESC, u.id DESC
@@ -917,23 +990,35 @@ func (s *Service) ListUsers(ctx context.Context, role, q string, limit, offset i
 	for rows.Next() {
 		var it AdminUserRecord
 		var email sql.NullString
+		var participantNo sql.NullString
+		var nisn sql.NullString
 		var schoolID sql.NullInt64
 		var schoolName sql.NullString
+		var schoolCode sql.NullString
 		var classID sql.NullInt64
 		var classGrade sql.NullString
 		var className sql.NullString
 		var approvedAt sql.NullTime
-		if err := rows.Scan(&it.ID, &it.Username, &email, &it.FullName, &it.Role, &schoolID, &schoolName, &classID, &classGrade, &className, &it.IsActive, &it.AccountStatus, &approvedAt, &it.CreatedAt); err != nil {
+		if err := rows.Scan(&it.ID, &it.Username, &email, &it.FullName, &it.Role, &participantNo, &nisn, &schoolID, &schoolName, &schoolCode, &classID, &classGrade, &className, &it.IsActive, &it.AccountStatus, &approvedAt, &it.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if email.Valid {
 			it.Email = &email.String
+		}
+		if participantNo.Valid {
+			it.ParticipantNo = &participantNo.String
+		}
+		if nisn.Valid {
+			it.NISN = &nisn.String
 		}
 		if schoolID.Valid {
 			it.SchoolID = &schoolID.Int64
 		}
 		if schoolName.Valid {
 			it.SchoolName = &schoolName.String
+		}
+		if schoolCode.Valid {
+			it.SchoolCode = &schoolCode.String
 		}
 		if classID.Valid {
 			it.ClassID = &classID.Int64
@@ -982,6 +1067,8 @@ func (s *Service) CreateUserByAdmin(ctx context.Context, actorID int64, in Admin
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	fullName := strings.TrimSpace(in.FullName)
 	role := strings.ToLower(strings.TrimSpace(in.Role))
+	participantNo := strings.TrimSpace(in.ParticipantNo)
+	nisn := strings.TrimSpace(in.NISN)
 	if username == "" || fullName == "" || !isValidRole(role) || len(strings.TrimSpace(in.Password)) < 8 {
 		return nil, errors.New("username, full_name, role, and password(>=8) are required")
 	}
@@ -993,6 +1080,9 @@ func (s *Service) CreateUserByAdmin(ctx context.Context, actorID int64, in Admin
 	if role == "siswa" {
 		if in.SchoolID == nil || in.ClassID == nil || *in.SchoolID <= 0 || *in.ClassID <= 0 {
 			return nil, errors.New("untuk role siswa, sekolah dan kelas wajib diisi")
+		}
+		if participantNo == "" || nisn == "" {
+			return nil, errors.New("untuk role siswa, nomor peserta dan NISN wajib diisi")
 		}
 	}
 
@@ -1007,27 +1097,42 @@ func (s *Service) CreateUserByAdmin(ctx context.Context, actorID int64, in Admin
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if role == "siswa" {
+		if err := validateSchoolHasNPSNTx(ctx, tx, *in.SchoolID); err != nil {
+			return nil, err
+		}
+	}
+
 	var out AdminUserRecord
 	var emailNull sql.NullString
+	var participantNoNull sql.NullString
+	var nisnNull sql.NullString
 	var approvedAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO users (
 			username, password_hash, full_name, role, is_active,
-			email, email_verified_at, account_status, approved_by, approved_at, created_at, updated_at
+			email, participant_no, nisn, email_verified_at, account_status, approved_by, approved_at, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, TRUE,
-			NULLIF($5,''), CASE WHEN NULLIF($5,'') IS NOT NULL THEN now() ELSE NULL END,
-			'active', $6, now(), now(), now()
+			NULLIF($5,''), NULLIF($6,''), NULLIF($7,''),
+			CASE WHEN NULLIF($5,'') IS NOT NULL THEN now() ELSE NULL END,
+			'active', $8, now(), now(), now()
 		)
-		RETURNING id, username, email, full_name, role, is_active, account_status, approved_at, created_at
-	`, username, string(hash), fullName, role, email, actorID).Scan(
-		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
+		RETURNING id, username, email, full_name, role, participant_no, nisn, is_active, account_status, approved_at, created_at
+	`, username, string(hash), fullName, role, email, participantNo, nisn, actorID).Scan(
+		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &participantNoNull, &nisnNull, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 	if emailNull.Valid {
 		out.Email = &emailNull.String
+	}
+	if participantNoNull.Valid {
+		out.ParticipantNo = &participantNoNull.String
+	}
+	if nisnNull.Valid {
+		out.NISN = &nisnNull.String
 	}
 	if approvedAt.Valid {
 		out.ApprovedAt = &approvedAt.Time
@@ -1055,6 +1160,8 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 	fullName := strings.TrimSpace(in.FullName)
 	email := strings.ToLower(strings.TrimSpace(in.Email))
 	role := strings.ToLower(strings.TrimSpace(in.Role))
+	participantNo := strings.TrimSpace(in.ParticipantNo)
+	nisn := strings.TrimSpace(in.NISN)
 	if userID <= 0 || fullName == "" || !isValidRole(role) {
 		return nil, errors.New("id, full_name, and valid role are required")
 	}
@@ -1067,6 +1174,9 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 		if in.SchoolID == nil || in.ClassID == nil || *in.SchoolID <= 0 || *in.ClassID <= 0 {
 			return nil, errors.New("untuk role siswa, sekolah dan kelas wajib diisi")
 		}
+		if participantNo == "" || nisn == "" {
+			return nil, errors.New("untuk role siswa, nomor peserta dan NISN wajib diisi")
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1074,6 +1184,12 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if role == "siswa" {
+		if err := validateSchoolHasNPSNTx(ctx, tx, *in.SchoolID); err != nil {
+			return nil, err
+		}
+	}
 
 	if strings.TrimSpace(in.Password) != "" {
 		if len(strings.TrimSpace(in.Password)) < 8 {
@@ -1095,21 +1211,25 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 
 	var out AdminUserRecord
 	var emailNull sql.NullString
+	var participantNoNull sql.NullString
+	var nisnNull sql.NullString
 	var approvedAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
 		UPDATE users
 		SET full_name = $2,
 			role = $3,
 			email = NULLIF($4,''),
+			participant_no = NULLIF($5,''),
+			nisn = NULLIF($6,''),
 			email_verified_at = CASE
 				WHEN NULLIF($4,'') IS NOT NULL THEN COALESCE(email_verified_at, now())
 				ELSE email_verified_at
 			END,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING id, username, email, full_name, role, is_active, account_status, approved_at, created_at
-	`, userID, fullName, role, email).Scan(
-		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
+		RETURNING id, username, email, full_name, role, participant_no, nisn, is_active, account_status, approved_at, created_at
+	`, userID, fullName, role, email, participantNo, nisn).Scan(
+		&out.ID, &out.Username, &emailNull, &out.FullName, &out.Role, &participantNoNull, &nisnNull, &out.IsActive, &out.AccountStatus, &approvedAt, &out.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1119,6 +1239,12 @@ func (s *Service) UpdateUserByAdmin(ctx context.Context, actorID, userID int64, 
 	}
 	if emailNull.Valid {
 		out.Email = &emailNull.String
+	}
+	if participantNoNull.Valid {
+		out.ParticipantNo = &participantNoNull.String
+	}
+	if nisnNull.Valid {
+		out.NISN = &nisnNull.String
 	}
 	if approvedAt.Valid {
 		out.ApprovedAt = &approvedAt.Time
@@ -1147,12 +1273,14 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 	defer func() { _ = tx.Rollback() }()
 
 	var role string
+	var participantNoCurrent sql.NullString
+	var nisnCurrent sql.NullString
 	if err := tx.QueryRowContext(ctx, `
-		SELECT role
+		SELECT role, participant_no, nisn
 		FROM users
 		WHERE id = $1
 		  AND is_active = TRUE
-	`, in.UserID).Scan(&role); err != nil {
+	`, in.UserID).Scan(&role, &participantNoCurrent, &nisnCurrent); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
@@ -1161,6 +1289,17 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 	if role != "guru" && role != "siswa" {
 		return nil, errors.New("hanya pengguna role guru/siswa yang bisa ditempatkan ke kelas")
 	}
+	if role == "siswa" {
+		if in.SchoolID == nil || in.ClassID == nil || *in.SchoolID <= 0 || *in.ClassID <= 0 {
+			return nil, errors.New("untuk role siswa, sekolah dan kelas wajib diisi")
+		}
+		if !participantNoCurrent.Valid || strings.TrimSpace(participantNoCurrent.String) == "" || !nisnCurrent.Valid || strings.TrimSpace(nisnCurrent.String) == "" {
+			return nil, errors.New("untuk role siswa, nomor peserta dan NISN wajib diisi")
+		}
+		if err := validateSchoolHasNPSNTx(ctx, tx, *in.SchoolID); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := upsertUserEnrollmentTx(ctx, tx, in.UserID, in.SchoolID, in.ClassID); err != nil {
 		return nil, err
@@ -1168,8 +1307,11 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 
 	var out AdminUserRecord
 	var email sql.NullString
+	var participantNo sql.NullString
+	var nisn sql.NullString
 	var schoolID sql.NullInt64
 	var schoolName sql.NullString
+	var schoolCode sql.NullString
 	var classID sql.NullInt64
 	var className sql.NullString
 	var approvedAt sql.NullTime
@@ -1180,8 +1322,11 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 			u.email,
 			u.full_name,
 			u.role,
+			u.participant_no,
+			u.nisn,
 			sch.school_id,
 			sch.name AS school_name,
+			sch.code AS school_code,
 			sch.class_id,
 			sch.class_name,
 			u.is_active,
@@ -1192,6 +1337,7 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 		LEFT JOIN LATERAL (
 			SELECT
 				s.name,
+				s.code,
 				e.school_id,
 				e.class_id,
 				c.name AS class_name
@@ -1209,8 +1355,11 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 		&email,
 		&out.FullName,
 		&out.Role,
+		&participantNo,
+		&nisn,
 		&schoolID,
 		&schoolName,
+		&schoolCode,
 		&classID,
 		&className,
 		&out.IsActive,
@@ -1227,11 +1376,20 @@ func (s *Service) AssignUserClassByAdminOrProktor(ctx context.Context, actorID i
 	if email.Valid {
 		out.Email = &email.String
 	}
+	if participantNo.Valid {
+		out.ParticipantNo = &participantNo.String
+	}
+	if nisn.Valid {
+		out.NISN = &nisn.String
+	}
 	if schoolID.Valid {
 		out.SchoolID = &schoolID.Int64
 	}
 	if schoolName.Valid {
 		out.SchoolName = &schoolName.String
+	}
+	if schoolCode.Valid {
+		out.SchoolCode = &schoolCode.String
 	}
 	if classID.Valid {
 		out.ClassID = &classID.Int64
@@ -1319,6 +1477,25 @@ func upsertUserEnrollmentTx(ctx context.Context, tx *sql.Tx, userID int64, schoo
 		VALUES ($1, $2, $3, 'active', now(), now())
 	`, userID, *schoolID, *classID); err != nil {
 		return fmt.Errorf("replace enrollment insert: %w", err)
+	}
+	return nil
+}
+
+func validateSchoolHasNPSNTx(ctx context.Context, tx *sql.Tx, schoolID int64) error {
+	var code sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+		SELECT code
+		FROM schools
+		WHERE id = $1
+		  AND is_active = TRUE
+	`, schoolID).Scan(&code); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("sekolah tidak ditemukan atau nonaktif")
+		}
+		return fmt.Errorf("validate school npsn: %w", err)
+	}
+	if !code.Valid || strings.TrimSpace(code.String) == "" {
+		return errors.New("NPSN sekolah wajib diisi sebelum menempatkan siswa")
 	}
 	return nil
 }

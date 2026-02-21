@@ -25,7 +25,8 @@ func TestFrontendSmokePublicRoutes(t *testing.T) {
 	}{
 		{name: "home", method: http.MethodGet, target: "/", wantStatus: http.StatusOK},
 		{name: "login", method: http.MethodGet, target: "/login", wantStatus: http.StatusOK},
-		{name: "simulasi", method: http.MethodGet, target: "/simulasi", wantStatus: http.StatusOK},
+		{name: "ujian_pick", method: http.MethodGet, target: "/ujian", wantStatus: http.StatusOK},
+		{name: "simulasi_redirect", method: http.MethodGet, target: "/simulasi", wantStatus: http.StatusFound},
 		{name: "authoring", method: http.MethodGet, target: "/authoring", wantStatus: http.StatusOK},
 		{name: "admin", method: http.MethodGet, target: "/admin", wantStatus: http.StatusOK},
 		{name: "attempt_page", method: http.MethodGet, target: "/ujian/123", wantStatus: http.StatusOK},

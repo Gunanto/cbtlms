@@ -221,12 +221,19 @@ textarea:focus-visible {
     gap: 8px;
 }
 
-.attempt-font-row {
+.attempt-subhead {
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid #dbe3ef;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+}
+
+.attempt-font-row {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
 }
 
 .attempt-font-tools {
@@ -292,8 +299,8 @@ textarea:focus-visible {
 }
 
 .question-list-panel {
-    margin-top: 10px;
-    margin-left: auto;
+    margin-top: 0;
+    margin-left: 0;
     border: 1px solid var(--border);
     border-radius: 12px;
     background: #fff;
@@ -431,6 +438,52 @@ textarea:focus-visible {
     font-size: 12px;
     max-height: 280px;
     overflow: auto;
+}
+
+.attempt-info-dialog {
+    width: min(680px, 94vw);
+}
+
+.attempt-info-dialog h3 {
+    margin: 0;
+    color: #1f3f76;
+}
+
+.attempt-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.attempt-info-item {
+    border: 1px solid #d6e0ef;
+    border-radius: 10px;
+    background: #f8fbff;
+    padding: 10px;
+}
+
+.attempt-info-k {
+    font-size: 12px;
+    color: #5b6b82;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.attempt-info-v {
+    font-size: 15px;
+    color: #10253f;
+    font-weight: 700;
+}
+
+.attempt-info-note {
+    margin-top: 10px;
+    border-left: 3px solid #2f64dc;
+    background: #eef4ff;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: #12345f;
 }
 
 .author-grid {
@@ -1148,9 +1201,16 @@ body[data-page="guru_content"] .dashboard-hero .admin-stat-card .stat-value {
     .attempt-font-row {
         justify-content: flex-start;
     }
+    .attempt-subhead {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
     .attempt-font-tools {
         width: 100%;
         flex-wrap: wrap;
+    }
+    .attempt-info-grid {
+        grid-template-columns: 1fr;
     }
     .attempt-layout {
         grid-template-columns: 1fr;

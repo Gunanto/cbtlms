@@ -20,50 +20,56 @@
             </button>
         </div>
     </div>
-    <div class="attempt-font-row">
-        <div class="attempt-font-tools" role="group" aria-label="Ukuran Font">
-            <span class="attempt-font-label">Ukuran Font:</span>
-            <button
-                id="font-small-btn"
-                type="button"
-                class="font-size-btn"
-                aria-pressed="false"
+    <div class="attempt-subhead">
+        <div class="attempt-font-row">
+            <div
+                class="attempt-font-tools"
+                role="group"
+                aria-label="Ukuran Font"
             >
-                A
-            </button>
-            <button
-                id="font-medium-btn"
-                type="button"
-                class="font-size-btn"
-                aria-pressed="true"
-            >
-                A
-            </button>
-            <button
-                id="font-large-btn"
-                type="button"
-                class="font-size-btn"
-                aria-pressed="false"
-            >
-                A
-            </button>
+                <span class="attempt-font-label">Ukuran Font:</span>
+                <button
+                    id="font-small-btn"
+                    type="button"
+                    class="font-size-btn"
+                    aria-pressed="false"
+                >
+                    A
+                </button>
+                <button
+                    id="font-medium-btn"
+                    type="button"
+                    class="font-size-btn"
+                    aria-pressed="true"
+                >
+                    A
+                </button>
+                <button
+                    id="font-large-btn"
+                    type="button"
+                    class="font-size-btn"
+                    aria-pressed="false"
+                >
+                    A
+                </button>
+            </div>
         </div>
+        <section id="daftar-soal-panel" class="question-list-panel" hidden>
+            <div class="question-list-head">Navigasi Nomor Soal</div>
+            <div class="question-list-legend">
+                <span class="legend-item"
+                    ><i class="legend-dot legend-current"></i> Aktif</span
+                >
+                <span class="legend-item"
+                    ><i class="legend-dot legend-answered"></i> Terjawab</span
+                >
+                <span class="legend-item"
+                    ><i class="legend-dot legend-doubt"></i> Ragu</span
+                >
+            </div>
+            <div id="daftar-soal-body" class="question-list-grid"></div>
+        </section>
     </div>
-    <section id="daftar-soal-panel" class="question-list-panel" hidden>
-        <div class="question-list-head">Navigasi Nomor Soal</div>
-        <div class="question-list-legend">
-            <span class="legend-item"
-                ><i class="legend-dot legend-current"></i> Aktif</span
-            >
-            <span class="legend-item"
-                ><i class="legend-dot legend-answered"></i> Terjawab</span
-            >
-            <span class="legend-item"
-                ><i class="legend-dot legend-doubt"></i> Ragu</span
-            >
-        </div>
-        <div id="daftar-soal-body" class="question-list-grid"></div>
-    </section>
 
     <div class="attempt-layout">
         <article class="panel stimulus-panel">
@@ -115,4 +121,19 @@
         aria-live="polite"
     ></p>
 </section>
+<dialog id="info-soal-dialog" class="admin-dialog attempt-info-dialog">
+    <form method="dialog" class="form-grid">
+        <h3>Informasi Soal</h3>
+        <div id="info-soal-content" class="box"></div>
+        <div class="actions">
+            <button
+                id="info-soal-close-btn"
+                class="btn btn-secondary"
+                type="submit"
+            >
+                Tutup
+            </button>
+        </div>
+    </form>
+</dialog>
 {{end}}

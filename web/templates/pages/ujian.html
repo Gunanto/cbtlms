@@ -1,0 +1,121 @@
+{{define "ujian_content"}}
+<section class="card narrow">
+    <h2>Ikuti Ujian</h2>
+    <p class="muted">
+        Pilih jenjang, jenis mapel, mapel, lalu klik Masuk Ujian.
+    </p>
+
+    <form id="simulasi-form" class="form-grid">
+        <label>
+            Jenjang
+            <select id="level-select">
+                <option value="">Pilih jenjang...</option>
+            </select>
+        </label>
+
+        <label>
+            Jenis Mapel
+            <select id="type-select" disabled>
+                <option value="">Pilih jenis...</option>
+            </select>
+        </label>
+
+        <label>
+            Mata Pelajaran
+            <select id="subject-select" disabled>
+                <option value="">Pilih mapel...</option>
+            </select>
+        </label>
+
+        <label>
+            Exam
+            <select id="exam-select" disabled>
+                <option value="">Pilih exam...</option>
+            </select>
+        </label>
+
+        <button id="start-btn" class="btn" type="submit" disabled>
+            Masuk Ujian
+        </button>
+    </form>
+
+    <p id="simulasi-message" class="muted" role="status" aria-live="polite"></p>
+</section>
+
+<dialog id="student-profile-dialog" class="admin-dialog">
+    <form id="student-profile-dialog-form" class="form-grid">
+        <h3>Konfirmasi Data Peserta</h3>
+        <p class="muted">
+            Pastikan data Anda benar. Jika ada kesalahan, hubungi proktor.
+        </p>
+        <div class="table-wrap">
+            <table class="bs-table">
+                <tbody>
+                    <tr>
+                        <th>Nomor Peserta</th>
+                        <td id="profile-participant-no">-</td>
+                    </tr>
+                    <tr>
+                        <th>Nama Peserta</th>
+                        <td id="profile-full-name">-</td>
+                    </tr>
+                    <tr>
+                        <th>Kelas</th>
+                        <td id="profile-class-name">-</td>
+                    </tr>
+                    <tr>
+                        <th>NISN</th>
+                        <td id="profile-nisn">-</td>
+                    </tr>
+                    <tr>
+                        <th>Nama Sekolah</th>
+                        <td id="profile-school-name">-</td>
+                    </tr>
+                    <tr>
+                        <th>NPSN</th>
+                        <td id="profile-school-code">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="actions">
+            <button
+                id="student-profile-wrong-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Data Salah
+            </button>
+            <button class="btn" type="submit">Data Benar, Lanjut Ujian</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="exam-token-dialog" class="admin-dialog">
+    <form id="exam-token-dialog-form" class="form-grid">
+        <h3>Masukkan Token Ujian</h3>
+        <p id="exam-token-dialog-help" class="muted">
+            Token wajib diisi. Mintakan token ujian ke proktor.
+        </p>
+        <label>
+            Token Ujian
+            <input
+                id="exam-token-dialog-input"
+                type="text"
+                placeholder="Masukkan token ujian"
+                autocomplete="off"
+            />
+        </label>
+        <div class="actions">
+            <button
+                id="exam-token-dialog-cancel-btn"
+                class="btn btn-secondary"
+                type="button"
+            >
+                Batal
+            </button>
+            <button class="btn" type="submit">Lanjut Ujian</button>
+        </div>
+    </form>
+</dialog>
+{{end}}

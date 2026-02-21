@@ -85,8 +85,11 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "login_content", "Login CBT LMS", map[string]any{})
 	})
+	r.Get("/ujian", func(w http.ResponseWriter, r *http.Request) {
+		renderPage(w, "ujian_content", "Ikuti Ujian", map[string]any{})
+	})
 	r.Get("/simulasi", func(w http.ResponseWriter, r *http.Request) {
-		renderPage(w, "simulasi_content", "Pilih Simulasi", map[string]any{})
+		http.Redirect(w, r, "/ujian", http.StatusFound)
 	})
 	r.Get("/authoring", func(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "authoring_content", "Authoring Soal", map[string]any{})
@@ -124,6 +127,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 			secure.Use(authHandler.RequireAuth)
 			secure.Use(CSRFMiddleware(cfg.CSRFEnforced))
 			secure.Get("/auth/me", authHandler.Me)
+			secure.Get("/auth/me/student-profile", authHandler.MeStudentProfile)
 			secure.Post("/auth/logout", authHandler.Logout)
 			secure.Get("/subjects", examHandler.ListSubjects)
 			secure.With(authHandler.RequireRoles("guru")).Post("/subjects", examHandler.CreateSubject)

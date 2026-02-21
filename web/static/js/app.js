@@ -227,7 +227,7 @@
       if (role === "admin") return "/admin";
       if (role === "proktor") return "/proktor";
       if (role === "guru") return "/guru";
-      return "/simulasi";
+      return "/ujian";
     }
 
     const user = await meOrNull();
@@ -272,8 +272,38 @@
     const typeSelect = document.getElementById("type-select");
     const subjectSelect = document.getElementById("subject-select");
     const examSelect = document.getElementById("exam-select");
-    const examTokenInput = document.getElementById("exam-token-input");
+    const examTokenDialog = document.getElementById("exam-token-dialog");
+    const examTokenDialogForm = document.getElementById(
+      "exam-token-dialog-form",
+    );
+    const examTokenDialogHelp = document.getElementById(
+      "exam-token-dialog-help",
+    );
+    const examTokenDialogInput = document.getElementById(
+      "exam-token-dialog-input",
+    );
+    const examTokenDialogCancelBtn = document.getElementById(
+      "exam-token-dialog-cancel-btn",
+    );
+    const studentProfileDialog = document.getElementById(
+      "student-profile-dialog",
+    );
+    const studentProfileDialogForm = document.getElementById(
+      "student-profile-dialog-form",
+    );
+    const studentProfileWrongBtn = document.getElementById(
+      "student-profile-wrong-btn",
+    );
+    const profileParticipantNo = document.getElementById(
+      "profile-participant-no",
+    );
+    const profileFullName = document.getElementById("profile-full-name");
+    const profileClassName = document.getElementById("profile-class-name");
+    const profileNISN = document.getElementById("profile-nisn");
+    const profileSchoolName = document.getElementById("profile-school-name");
+    const profileSchoolCode = document.getElementById("profile-school-code");
     const startBtn = document.getElementById("start-btn");
+    let pendingStartExamID = 0;
 
     let subjects = [];
     const initDone = beginBusy(form, msg, "Memuat daftar mapel...");
@@ -376,9 +406,10 @@
         );
         examSelect.disabled = false;
         exams.forEach(function (x) {
+          const examID = Number((x && x.id) || 0);
           const o = document.createElement("option");
-          o.value = String(x.id);
-          o.textContent = x.code + " - " + x.title;
+          o.value = String(examID);
+          o.textContent = String(x.code || "") + " - " + String(x.title || "");
           examSelect.appendChild(o);
         });
       } catch (err) {
@@ -392,20 +423,12 @@
       startBtn.disabled = !examSelect.value;
     });
 
-    form.addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const examID = Number(examSelect.value || 0);
-      if (!examID) return;
-
-      const done = beginBusy(form, msg, "Menyiapkan attempt...");
+    async function startAttemptByExamID(examID, token, busyTarget) {
+      const done = beginBusy(busyTarget || form, msg, "Menyiapkan attempt...");
       try {
-        const payload = { exam_id: examID };
-        const examToken = String(
-          (examTokenInput && examTokenInput.value) || "",
-        ).trim();
-        if (examToken) {
-          payload.exam_token = examToken;
-        }
+        const payload = { exam_id: Number(examID || 0) };
+        const examToken = String(token || "").trim();
+        payload.exam_token = examToken;
         if (user.role === "admin" || user.role === "proktor") {
           payload.student_id = user.id;
         }
@@ -416,7 +439,111 @@
       } finally {
         done();
       }
+    }
+
+    async function loadStudentProfile() {
+      return api("/api/v1/auth/me/student-profile", "GET");
+    }
+
+    function setProfileCell(el, value) {
+      if (!el) return;
+      const raw = String(value || "").trim();
+      el.textContent = raw || "-";
+    }
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const examID = Number(examSelect.value || 0);
+      if (!examID) return;
+      pendingStartExamID = examID;
+
+      try {
+        const profile = await loadStudentProfile();
+        setProfileCell(profileParticipantNo, profile.participant_no);
+        setProfileCell(profileFullName, profile.full_name);
+        setProfileCell(profileClassName, profile.class_name);
+        setProfileCell(profileNISN, profile.nisn);
+        setProfileCell(profileSchoolName, profile.school_name);
+        setProfileCell(profileSchoolCode, profile.school_code);
+      } catch (err) {
+        text(msg, "Gagal memuat data peserta: " + err.message);
+        return;
+      }
+
+      if (
+        studentProfileDialog &&
+        typeof studentProfileDialog.showModal === "function"
+      ) {
+        studentProfileDialog.showModal();
+        return;
+      }
+      text(
+        msg,
+        "Dialog konfirmasi data tidak tersedia. Hubungi proktor untuk bantuan.",
+      );
     });
+
+    if (examTokenDialogCancelBtn) {
+      examTokenDialogCancelBtn.addEventListener("click", function () {
+        pendingStartExamID = 0;
+        if (examTokenDialog && typeof examTokenDialog.close === "function") {
+          examTokenDialog.close();
+        }
+      });
+    }
+
+    if (studentProfileWrongBtn) {
+      studentProfileWrongBtn.addEventListener("click", function () {
+        pendingStartExamID = 0;
+        if (
+          studentProfileDialog &&
+          typeof studentProfileDialog.close === "function"
+        ) {
+          studentProfileDialog.close();
+        }
+        text(msg, "Data tidak sesuai. Hubungi proktor sebelum lanjut ujian.");
+      });
+    }
+
+    if (studentProfileDialogForm) {
+      studentProfileDialogForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (
+          studentProfileDialog &&
+          typeof studentProfileDialog.close === "function"
+        ) {
+          studentProfileDialog.close();
+        }
+        if (examTokenDialogInput) examTokenDialogInput.value = "";
+        if (
+          examTokenDialog &&
+          typeof examTokenDialog.showModal === "function"
+        ) {
+          examTokenDialog.showModal();
+          return;
+        }
+        text(msg, "Dialog token tidak tersedia. Hubungi proktor.");
+      });
+    }
+
+    if (examTokenDialogForm) {
+      examTokenDialogForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const examID = Number(pendingStartExamID || 0);
+        if (examID <= 0) return;
+        const token = String(
+          (examTokenDialogInput && examTokenDialogInput.value) || "",
+        ).trim();
+        if (!token) {
+          text(msg, "Token ujian wajib diisi.");
+          return;
+        }
+        if (examTokenDialog && typeof examTokenDialog.close === "function") {
+          examTokenDialog.close();
+        }
+        await startAttemptByExamID(examID, token, examTokenDialogForm);
+      });
+    }
   }
 
   function readSelectedFromPayload(payload) {
@@ -459,6 +586,9 @@
     const submitBtn = document.getElementById("submit-btn");
     const actionsBar = document.querySelector(".actions");
     const infoSoalBtn = document.getElementById("info-soal-btn");
+    const infoSoalDialog = document.getElementById("info-soal-dialog");
+    const infoSoalContent = document.getElementById("info-soal-content");
+    const infoSoalCloseBtn = document.getElementById("info-soal-close-btn");
     const daftarSoalBtn = document.getElementById("daftar-soal-btn");
     const daftarSoalPanel = document.getElementById("daftar-soal-panel");
     const daftarSoalBody = document.getElementById("daftar-soal-body");
@@ -551,6 +681,14 @@
       const qType = String(questionLike.question_type || "").toLowerCase();
       const payload = parseJSONLoose(questionLike.answer_payload, {});
       return isAnsweredPayload(qType, payload);
+    }
+
+    function questionTypeLabel(qType) {
+      const v = String(qType || "").toLowerCase();
+      if (v === "pg_tunggal") return "Pilihan Ganda Tunggal";
+      if (v === "multi_jawaban") return "Pilihan Ganda Multi Jawaban";
+      if (v === "benar_salah_pernyataan") return "Benar/Salah Pernyataan";
+      return v || "-";
     }
 
     function ensureQuestionList() {
@@ -859,14 +997,75 @@
 
     if (infoSoalBtn) {
       infoSoalBtn.addEventListener("click", function () {
+        const qState = questionState[currentNo] || {};
+        const currentType = questionTypeLabel(
+          currentQuestion && currentQuestion.question_type,
+        );
+        const remainText = String(
+          (remainingLabel && remainingLabel.textContent) || "-",
+        ).trim();
+        const infoHTML = [
+          '<div class="attempt-info-grid">',
+          '<article class="attempt-info-item">' +
+            '<div class="attempt-info-k">Posisi Soal</div>' +
+            '<div class="attempt-info-v">' +
+            escapeHtml(String(currentNo)) +
+            " / " +
+            escapeHtml(String(totalQuestions)) +
+            "</div>" +
+            "</article>",
+          '<article class="attempt-info-item">' +
+            '<div class="attempt-info-k">Tipe Soal</div>' +
+            '<div class="attempt-info-v">' +
+            escapeHtml(currentType) +
+            "</div>" +
+            "</article>",
+          '<article class="attempt-info-item">' +
+            '<div class="attempt-info-k">Status Jawaban</div>' +
+            '<div class="attempt-info-v">' +
+            (qState.answered ? "Sudah terjawab" : "Belum terjawab") +
+            "</div>" +
+            "</article>",
+          '<article class="attempt-info-item">' +
+            '<div class="attempt-info-k">Status Ragu-ragu</div>' +
+            '<div class="attempt-info-v">' +
+            (qState.doubt ? "Ya" : "Tidak") +
+            "</div>" +
+            "</article>",
+          '<article class="attempt-info-item">' +
+            '<div class="attempt-info-k">Sisa Waktu</div>' +
+            '<div class="attempt-info-v">' +
+            escapeHtml(remainText) +
+            "</div>" +
+            "</article>",
+          "</div>",
+          '<div class="attempt-info-note"><strong>Panduan:</strong> klik <em>Daftar Soal</em> untuk lompat nomor, jawaban tersimpan otomatis.</div>',
+        ].join("");
+        if (infoSoalContent) {
+          html(infoSoalContent, infoHTML);
+        }
+        if (infoSoalDialog && typeof infoSoalDialog.showModal === "function") {
+          infoSoalDialog.showModal();
+          return;
+        }
         text(
           message,
-          "Gunakan Daftar Soal untuk lompat nomor. Soal saat ini: " +
+          "Soal saat ini " +
             currentNo +
             "/" +
             totalQuestions +
+            ". Tipe: " +
+            currentType +
             ".",
         );
+      });
+    }
+
+    if (infoSoalCloseBtn) {
+      infoSoalCloseBtn.addEventListener("click", function () {
+        if (infoSoalDialog && typeof infoSoalDialog.close === "function") {
+          infoSoalDialog.close();
+        }
       });
     }
 
@@ -1412,19 +1611,33 @@
       const roleEl = formEl.elements.namedItem("role");
       const schoolEl = formEl.elements.namedItem("school_id");
       const classEl = formEl.elements.namedItem("class_id");
+      const participantNoEl = formEl.elements.namedItem("participant_no");
+      const nisnEl = formEl.elements.namedItem("nisn");
       if (!roleEl || !schoolEl || !classEl) return;
 
       const mustHaveClass = isStudentRole(roleEl.value);
       schoolEl.required = mustHaveClass;
       classEl.required = mustHaveClass;
+      if (participantNoEl) participantNoEl.required = mustHaveClass;
+      if (nisnEl) nisnEl.required = mustHaveClass;
 
       const schoolLabel = schoolEl.closest("label");
       const classLabel = classEl.closest("label");
+      const participantNoLabel = participantNoEl
+        ? participantNoEl.closest("label")
+        : null;
+      const nisnLabel = nisnEl ? nisnEl.closest("label") : null;
       if (schoolLabel) {
         schoolLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
       }
       if (classLabel) {
         classLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
+      }
+      if (participantNoLabel) {
+        participantNoLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
+      }
+      if (nisnLabel) {
+        nisnLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
       }
     }
 
@@ -2036,6 +2249,12 @@
             userUpdateForm.elements.namedItem("email").value = String(
               userItem.email || "",
             );
+            userUpdateForm.elements.namedItem("participant_no").value = String(
+              userItem.participant_no || "",
+            );
+            userUpdateForm.elements.namedItem("nisn").value = String(
+              userItem.nisn || "",
+            );
             userUpdateForm.elements.namedItem("role").value = String(
               userItem.role || "siswa",
             );
@@ -2133,8 +2352,14 @@
           const role = String(fd.get("role") || "")
             .trim()
             .toLowerCase();
+          const participantNo = String(fd.get("participant_no") || "").trim();
+          const nisn = String(fd.get("nisn") || "").trim();
           if (isStudentRole(role) && (schoolID === null || classID === null)) {
             setMsg("Untuk role siswa, sekolah dan kelas wajib dipilih.");
+            return;
+          }
+          if (isStudentRole(role) && (!participantNo || !nisn)) {
+            setMsg("Untuk role siswa, nomor peserta dan NISN wajib diisi.");
             return;
           }
           if (schoolID !== null && classID === null) {
@@ -2147,6 +2372,8 @@
             email: String(fd.get("email") || "").trim(),
             role: String(fd.get("role") || "").trim(),
             password: String(fd.get("password") || ""),
+            participant_no: participantNo,
+            nisn: nisn,
             school_id: schoolID,
             class_id: classID,
           });
@@ -2211,8 +2438,14 @@
           const role = String(fd.get("role") || "")
             .trim()
             .toLowerCase();
+          const participantNo = String(fd.get("participant_no") || "").trim();
+          const nisn = String(fd.get("nisn") || "").trim();
           if (isStudentRole(role) && (schoolID === null || classID === null)) {
             setMsg("Untuk role siswa, sekolah dan kelas wajib dipilih.");
+            return;
+          }
+          if (isStudentRole(role) && (!participantNo || !nisn)) {
+            setMsg("Untuk role siswa, nomor peserta dan NISN wajib diisi.");
             return;
           }
           if (schoolID !== null && classID === null) {
@@ -2224,6 +2457,8 @@
             email: String(fd.get("email") || "").trim(),
             role: String(fd.get("role") || "").trim(),
             password: String(fd.get("password") || ""),
+            participant_no: participantNo,
+            nisn: nisn,
             school_id: schoolID === null ? 0 : schoolID,
             class_id: classID === null ? 0 : classID,
           });

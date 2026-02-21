@@ -400,6 +400,17 @@
                 </select>
             </label>
             <label
+                >Nomor Peserta
+                <input
+                    type="text"
+                    name="participant_no"
+                    placeholder="Wajib untuk siswa"
+            /></label>
+            <label
+                >NISN
+                <input type="text" name="nisn" placeholder="Wajib untuk siswa"
+            /></label>
+            <label
                 >Sekolah
                 <select name="school_id">
                     <option value="">Tanpa Sekolah</option>
@@ -445,6 +456,17 @@
                     <option value="admin">admin</option>
                 </select>
             </label>
+            <label
+                >Nomor Peserta
+                <input
+                    type="text"
+                    name="participant_no"
+                    placeholder="Wajib untuk siswa"
+            /></label>
+            <label
+                >NISN
+                <input type="text" name="nisn" placeholder="Wajib untuk siswa"
+            /></label>
             <label
                 >Sekolah
                 <select name="school_id">
@@ -502,10 +524,14 @@
             <p class="muted">
                 Gunakan kolom:
                 <code
-                    >username, full_name, role, email, password, school_name,
-                    class_name, grade_level, is_active</code
+                    >username, full_name, role, email, participant_no, nisn,
+                    password, school_name, class_name, grade_level,
+                    is_active</code
                 >. Untuk role <code>siswa</code>,
-                <code>school_name/class_name/grade_level</code> wajib diisi.
+                <code
+                    >participant_no/nisn/school_name/class_name/grade_level</code
+                >
+                wajib diisi.
             </p>
             <label
                 >File Excel

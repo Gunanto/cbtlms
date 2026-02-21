@@ -149,7 +149,9 @@ func (h *Handler) Start(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, r, http.StatusNotFound, response{OK: false, Error: err.Error()})
 		case errors.Is(err, ErrExamNotAssigned):
 			writeJSON(w, r, http.StatusForbidden, response{OK: false, Error: err.Error()})
-		case errors.Is(err, ErrExamTokenRequired), errors.Is(err, ErrExamTokenInvalid), errors.Is(err, ErrExamTokenExpired):
+		case errors.Is(err, ErrStudentDataMissing):
+			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+		case errors.Is(err, ErrExamTokenRequired), errors.Is(err, ErrExamTokenInvalid), errors.Is(err, ErrExamTokenExpired), errors.Is(err, ErrExamTokenUnavailable):
 			writeJSON(w, r, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		default:
 			writeJSON(w, r, http.StatusInternalServerError, response{OK: false, Error: "internal error"})

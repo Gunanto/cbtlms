@@ -64,22 +64,26 @@ type rejectRegistrationRequest struct {
 }
 
 type adminCreateUserRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	FullName string `json:"full_name"`
-	Role     string `json:"role"`
-	SchoolID *int64 `json:"school_id"`
-	ClassID  *int64 `json:"class_id"`
+	Username      string `json:"username"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+	FullName      string `json:"full_name"`
+	Role          string `json:"role"`
+	ParticipantNo string `json:"participant_no"`
+	NISN          string `json:"nisn"`
+	SchoolID      *int64 `json:"school_id"`
+	ClassID       *int64 `json:"class_id"`
 }
 
 type adminUpdateUserRequest struct {
-	FullName string `json:"full_name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
-	SchoolID *int64 `json:"school_id"`
-	ClassID  *int64 `json:"class_id"`
+	FullName      string `json:"full_name"`
+	Email         string `json:"email"`
+	Password      string `json:"password"`
+	Role          string `json:"role"`
+	ParticipantNo string `json:"participant_no"`
+	NISN          string `json:"nisn"`
+	SchoolID      *int64 `json:"school_id"`
+	ClassID       *int64 `json:"class_id"`
 }
 
 type userClassPlacementRequest struct {
@@ -244,6 +248,31 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: user})
 }
 
+func (h *Handler) MeStudentProfile(w http.ResponseWriter, r *http.Request) {
+	user, ok := CurrentUser(r.Context())
+	if !ok {
+		writeJSON(w, r, http.StatusUnauthorized, apiResponse{OK: false, Error: "unauthorized"})
+		return
+	}
+	if user.Role != "siswa" {
+		writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "forbidden"})
+		return
+	}
+	out, err := h.svc.GetStudentExamProfile(r.Context(), user.ID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrForbidden):
+			writeJSON(w, r, http.StatusForbidden, apiResponse{OK: false, Error: "forbidden"})
+		case errors.Is(err, ErrUserNotFound):
+			writeJSON(w, r, http.StatusNotFound, apiResponse{OK: false, Error: "user not found"})
+		default:
+			writeJSON(w, r, http.StatusInternalServerError, apiResponse{OK: false, Error: "internal error"})
+		}
+		return
+	}
+	writeJSON(w, r, http.StatusOK, apiResponse{OK: true, Data: out})
+}
+
 func (h *Handler) CreateRegistration(w http.ResponseWriter, r *http.Request) {
 	var req createRegistrationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -368,13 +397,15 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.svc.CreateUserByAdmin(r.Context(), admin.ID, AdminCreateUserInput{
-		Username: req.Username,
-		Email:    req.Email,
-		Password: req.Password,
-		FullName: req.FullName,
-		Role:     req.Role,
-		SchoolID: req.SchoolID,
-		ClassID:  req.ClassID,
+		Username:      req.Username,
+		Email:         req.Email,
+		Password:      req.Password,
+		FullName:      req.FullName,
+		Role:          req.Role,
+		ParticipantNo: req.ParticipantNo,
+		NISN:          req.NISN,
+		SchoolID:      req.SchoolID,
+		ClassID:       req.ClassID,
 	})
 	if err != nil {
 		writeJSON(w, r, http.StatusBadRequest, apiResponse{OK: false, Error: err.Error()})
@@ -403,12 +434,14 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := h.svc.UpdateUserByAdmin(r.Context(), admin.ID, id, AdminUpdateUserInput{
-		FullName: req.FullName,
-		Email:    req.Email,
-		Password: req.Password,
-		Role:     req.Role,
-		SchoolID: req.SchoolID,
-		ClassID:  req.ClassID,
+		FullName:      req.FullName,
+		Email:         req.Email,
+		Password:      req.Password,
+		Role:          req.Role,
+		ParticipantNo: req.ParticipantNo,
+		NISN:          req.NISN,
+		SchoolID:      req.SchoolID,
+		ClassID:       req.ClassID,
 	})
 	if err != nil {
 		switch {

@@ -40,6 +40,8 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 		"email",
 		"full_name",
 		"role",
+		"participant_no",
+		"nisn",
 		"school_name",
 		"class_name",
 		"grade_level",
@@ -74,6 +76,8 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 			email,
 			it.FullName,
 			it.Role,
+			strOrEmpty(it.ParticipantNo),
+			strOrEmpty(it.NISN),
 			schoolName,
 			className,
 			gradeLevel,
@@ -86,7 +90,7 @@ func (s *Service) ExportUsersExcel(ctx context.Context, role, q string) ([]byte,
 			_ = f.SetCellValue(sheet, cell, v)
 		}
 	}
-	_ = f.SetColWidth(sheet, "A", "J", 22)
+	_ = f.SetColWidth(sheet, "A", "L", 22)
 
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
@@ -103,6 +107,8 @@ func (s *Service) ExportUserImportTemplateExcel() ([]byte, error) {
 		"email",
 		"full_name",
 		"role",
+		"participant_no",
+		"nisn",
 		"password",
 		"school_name",
 		"class_name",
@@ -115,8 +121,8 @@ func (s *Service) ExportUserImportTemplateExcel() ([]byte, error) {
 	}
 
 	exampleRows := [][]any{
-		{"siswa_demo_001", "siswa001@example.com", "Siswa Demo 001", "siswa", "password123", "SMPN 1 Punggur", "TKA Matematika", "Kelas 9", "true"},
-		{"guru_demo_001", "guru001@example.com", "Guru Demo 001", "guru", "password123", "", "", "", "true"},
+		{"siswa_demo_001", "siswa001@example.com", "Siswa Demo 001", "siswa", "PST-2026-0001", "0123456789", "password123", "SMPN 1 Punggur", "TKA Matematika", "Kelas 9", "true"},
+		{"guru_demo_001", "guru001@example.com", "Guru Demo 001", "guru", "", "", "password123", "", "", "", "true"},
 	}
 	for i, row := range exampleRows {
 		rowNo := i + 2
@@ -128,11 +134,11 @@ func (s *Service) ExportUserImportTemplateExcel() ([]byte, error) {
 
 	noteRow := len(exampleRows) + 4
 	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow), "Catatan:")
-	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+1), "- role siswa wajib isi school_name, class_name, grade_level.")
+	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+1), "- role siswa wajib isi participant_no, nisn, school_name, class_name, grade_level.")
 	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+2), "- school_name dan class_name+grade_level harus sudah ada di Data Master.")
 	_ = f.SetCellValue(sheet, "A"+strconv.Itoa(noteRow+3), "- role admin/proktor/guru boleh kosongkan kolom kelas.")
 
-	_ = f.SetColWidth(sheet, "A", "I", 24)
+	_ = f.SetColWidth(sheet, "A", "K", 24)
 
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
@@ -190,6 +196,8 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 		role := strings.ToLower(get("role"))
 		email := strings.ToLower(get("email"))
 		password := get("password")
+		participantNo := get("participant_no")
+		nisn := get("nisn")
 		activeRaw := strings.ToLower(get("is_active"))
 		schoolName := get("school_name")
 		className := get("class_name")
@@ -218,6 +226,15 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 		var schoolID *int64
 		var classID *int64
 		isSiswa := role == "siswa"
+		if isSiswa && (strings.TrimSpace(participantNo) == "" || strings.TrimSpace(nisn) == "") {
+			report.FailedRows++
+			report.Errors = append(report.Errors, UserImportRowError{
+				Row:      rowNo,
+				Username: username,
+				Error:    "untuk role siswa, participant_no dan nisn wajib diisi",
+			})
+			continue
+		}
 		containsPlacement := strings.TrimSpace(schoolName) != "" || strings.TrimSpace(className) != "" || strings.TrimSpace(gradeLevel) != ""
 		if isSiswa || containsPlacement {
 			if strings.TrimSpace(schoolName) == "" || strings.TrimSpace(className) == "" || strings.TrimSpace(gradeLevel) == "" {
@@ -266,13 +283,15 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 				continue
 			}
 			created, err := s.CreateUserByAdmin(ctx, actorID, AdminCreateUserInput{
-				Username: username,
-				Email:    email,
-				Password: password,
-				FullName: fullName,
-				Role:     role,
-				SchoolID: schoolID,
-				ClassID:  classID,
+				Username:      username,
+				Email:         email,
+				Password:      password,
+				FullName:      fullName,
+				Role:          role,
+				ParticipantNo: participantNo,
+				NISN:          nisn,
+				SchoolID:      schoolID,
+				ClassID:       classID,
 			})
 			if err != nil {
 				report.FailedRows++
@@ -286,12 +305,14 @@ func (s *Service) ImportUsersExcel(ctx context.Context, actorID int64, r io.Read
 			userID = created.ID
 		} else {
 			if _, err := s.UpdateUserByAdmin(ctx, actorID, userID, AdminUpdateUserInput{
-				FullName: fullName,
-				Email:    email,
-				Role:     role,
-				Password: password,
-				SchoolID: schoolID,
-				ClassID:  classID,
+				FullName:      fullName,
+				Email:         email,
+				Role:          role,
+				Password:      password,
+				ParticipantNo: participantNo,
+				NISN:          nisn,
+				SchoolID:      schoolID,
+				ClassID:       classID,
 			}); err != nil {
 				report.FailedRows++
 				report.Errors = append(report.Errors, UserImportRowError{
@@ -369,4 +390,11 @@ func parseBoolLoose(v string) bool {
 		}
 		return true
 	}
+}
+
+func strOrEmpty(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(*v)
 }
