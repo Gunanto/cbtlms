@@ -7,7 +7,11 @@
         <title>{{.Title}}</title>
         <link rel="stylesheet" href="/static/css/app.css?v={{.AssetVersion}}" />
     </head>
-    <body data-page="{{.Page}}">
+    <body
+        data-page="{{.Page}}"
+        class="{{if eq .Page "home_content"}}page-home{{end}}"
+    >
+        {{if ne .Page "home_content"}}
         <header class="topbar">
             <h1><a href="/" class="brand">CBT LMS</a></h1>
             <nav class="topnav">
@@ -23,8 +27,7 @@
             </nav>
         </header>
         <main class="container">
-            {{if eq .Page "home_content"}} {{template "home_content" .}} {{else
-            if eq .Page "login_content"}} {{template "login_content" .}} {{else
+            {{if eq .Page "login_content"}} {{template "login_content" .}} {{else
             if eq .Page "ujian_content"}} {{template "ujian_content" .}} {{else
             if eq .Page "authoring_content"}} {{template "authoring_content" .}}
             {{else if eq .Page "proktor_content"}} {{template "proktor_content"
@@ -34,6 +37,7 @@
             "attempt_content" .}} {{else if eq .Page "result_content"}}
             {{template "result_content" .}} {{end}}
         </main>
+        {{else}} {{template "home_content" .}} {{end}}
         <script src="/static/js/app.js?v={{.AssetVersion}}" defer></script>
     </body>
 </html>

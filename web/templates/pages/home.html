@@ -1,54 +1,73 @@
 {{define "home_content"}}
-<section class="card">
-    <h2>Blueprint Project Ready</h2>
-    <p>Starter backend Go + database migration + docker compose sudah siap.</p>
-    <ul>
-        <li>Health check: <code>/healthz</code></li>
-        <li>Static assets: <code>/static/*</code></li>
-    </ul>
-    <p class="muted">
-        Halaman ini ada di file <code>web/templates/pages/home.html</code>, dan
-        route-nya di <code>internal/app/router.go</code>.
-    </p>
+<section class="landing-root">
+    <div class="landing-noise" aria-hidden="true"></div>
+    <div class="landing-radial landing-radial-a" aria-hidden="true"></div>
+    <div class="landing-radial landing-radial-b" aria-hidden="true"></div>
 
-    <div class="actions">
-        <a class="btn" href="/ujian">Ikuti Ujian</a>
-        <a class="btn btn-secondary" href="/login">Buka Form Login</a>
+    <main class="landing-main">
+        <div class="landing-brand-chip" aria-hidden="true">g-cbt</div>
+        <h1 class="landing-title">g-<span>cbt</span></h1>
+        <p class="landing-subtitle">Platform evaluasi digital sekolah.</p>
+
+        <div class="landing-actions">
+            <a class="landing-btn-primary" href="/login"
+                >Masuk ke Sistem Ujian</a
+            >
+        </div>
+
+        <div class="landing-meta">
+            <span>Secure Access</span>
+            <span>Fast Performance</span>
+            <button
+                id="home-ai-open"
+                class="landing-ai-trigger"
+                type="button"
+                aria-controls="home-ai-modal"
+                aria-expanded="false"
+            >
+                Tanya AI Bantuan
+            </button>
+        </div>
+    </main>
+
+    <div id="home-ai-modal" class="home-ai-modal" aria-hidden="true">
+        <div class="home-ai-head">
+            <strong>g-cbt AI Assistant</strong>
+            <button id="home-ai-close" type="button" aria-label="Tutup bantuan">
+                x
+            </button>
+        </div>
+        <div id="home-ai-messages" class="home-ai-messages">
+            <div class="home-ai-msg home-ai-msg-bot">
+                Halo, saya siap bantu pertanyaan seputar login, token ujian, dan
+                kendala umum CBT.
+            </div>
+        </div>
+        <div class="home-ai-input-wrap">
+            <input
+                id="home-ai-input"
+                type="text"
+                placeholder="Contoh: token ujian saya tidak valid"
+                autocomplete="off"
+            />
+            <button id="home-ai-send" type="button">Kirim</button>
+        </div>
     </div>
 
-    <h3>1. Stack Teknologi Rekomendasi</h3>
-    <ul>
-        <li>Backend: <code>Go 1.22+</code> dengan router <code>Chi</code>.</li>
-        <li>
-            Frontend: SSR <code>html/template</code> +
-            <code>HTMX</code> (opsional interaksi ringan).
-        </li>
-        <li>
-            Database: <code>PostgreSQL 15+</code> untuk transaksi ujian yang
-            konsisten.
-        </li>
-        <li>
-            Infra: <code>Docker Compose</code>, reverse proxy
-            <code>Nginx/Caddy</code>, <code>Redis</code> opsional.
-        </li>
-    </ul>
+    <button
+        id="home-ai-fab"
+        class="home-ai-fab"
+        type="button"
+        aria-controls="home-ai-modal"
+        aria-label="Buka AI assistant"
+    >
+        AI
+    </button>
 
-    <h3>2. Arsitektur Sistem</h3>
-    <ul>
-        <li>Peserta login lalu pilih jenjang, jenis mapel, dan mapel.</li>
-        <li>
-            Sistem membuat <code>attempt</code> berisi waktu mulai dan batas
-            selesai dari server.
-        </li>
-        <li>
-            Halaman ujian dua panel: kiri stimulus, kanan pertanyaan dan
-            jawaban.
-        </li>
-        <li>Autosave jawaban idempotent ke server setiap perubahan.</li>
-        <li>
-            Submit final diproses transaksi SQL (atomic), lalu tampil hasil
-            sesuai <code>review_policy</code>.
-        </li>
-    </ul>
+    <footer class="landing-footer">
+        <div class="landing-footer-title">g-cbt</div>
+        <p>Dibuat oleh pakgun v0.1 - 2026</p>
+        <small>&copy; 2026 Sistem Manajemen Ujian Digital</small>
+    </footer>
 </section>
 {{end}}

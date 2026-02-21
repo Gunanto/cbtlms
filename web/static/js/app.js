@@ -1350,6 +1350,99 @@
     }
   }
 
+  function initHomePage() {
+    const root = document.querySelector('[data-page="home_content"]');
+    if (!root) return;
+
+    const modal = document.getElementById("home-ai-modal");
+    const openBtn = document.getElementById("home-ai-open");
+    const fabBtn = document.getElementById("home-ai-fab");
+    const closeBtn = document.getElementById("home-ai-close");
+    const sendBtn = document.getElementById("home-ai-send");
+    const input = document.getElementById("home-ai-input");
+    const messages = document.getElementById("home-ai-messages");
+
+    if (!modal || !sendBtn || !input || !messages) return;
+
+    function setOpen(open) {
+      modal.classList.toggle("is-open", open);
+      modal.setAttribute("aria-hidden", open ? "false" : "true");
+      if (open) input.focus();
+      if (openBtn)
+        openBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function appendMessage(textValue, user) {
+      const item = document.createElement("div");
+      item.className =
+        "home-ai-msg " + (user ? "home-ai-msg-user" : "home-ai-msg-bot");
+      item.textContent = textValue;
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function send() {
+      const q = String(input.value || "").trim();
+      if (!q) return;
+      appendMessage(q, true);
+      input.value = "";
+      sendBtn.disabled = true;
+      appendMessage("Sedang memproses...", false);
+      const loadingEl = messages.lastElementChild;
+      try {
+        const res = await fetch("/api/v1/assistant", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q }),
+        });
+        const json = await res.json().catch(function () {
+          return {};
+        });
+        if (loadingEl && loadingEl.parentNode)
+          loadingEl.parentNode.removeChild(loadingEl);
+        if (!res.ok || !json.ok || !json.data || !json.data.reply) {
+          throw new Error(
+            extractAPIError(json, res.statusText || "Request failed"),
+          );
+        }
+        appendMessage(String(json.data.reply), false);
+      } catch (err) {
+        if (loadingEl && loadingEl.parentNode)
+          loadingEl.parentNode.removeChild(loadingEl);
+        appendMessage(
+          "Asisten sedang tidak tersedia. Coba beberapa saat lagi.",
+          false,
+        );
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
+        setOpen(!modal.classList.contains("is-open"));
+      });
+    }
+    if (fabBtn) {
+      fabBtn.addEventListener("click", function () {
+        setOpen(!modal.classList.contains("is-open"));
+      });
+    }
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function () {
+        setOpen(false);
+      });
+    }
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        send();
+      }
+    });
+  }
+
   async function initAdminPage() {
     const root = document.querySelector('[data-page="admin_content"]');
     if (!root) return;
@@ -9270,6 +9363,7 @@
 
   initTopbarAuth();
   initLoginPage();
+  initHomePage();
   initSimulasiPage();
   initAdminPage();
   initProktorPage();

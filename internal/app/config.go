@@ -17,6 +17,7 @@ type Config struct {
 	DBConnMaxLifeMins   int
 	CSRFEnforced        bool
 	AuthRateLimitPerMin int
+	AIRateLimitPerMin   int
 
 	SMTPHost     string
 	SMTPPort     int
@@ -26,6 +27,8 @@ type Config struct {
 	SMTPStartTLS bool
 
 	BootstrapToken string
+	GeminiAPIKey   string
+	GeminiModel    string
 }
 
 func LoadConfig() Config {
@@ -52,6 +55,7 @@ func LoadConfig() Config {
 		DBConnMaxLifeMins:   intOrDefault("DB_CONN_MAX_LIFETIME_MINUTES", 30),
 		CSRFEnforced:        boolOrDefault("CSRF_ENFORCED", false),
 		AuthRateLimitPerMin: intOrDefault("AUTH_RATE_LIMIT_PER_MINUTE", 60),
+		AIRateLimitPerMin:   intOrDefault("AI_RATE_LIMIT_PER_MINUTE", 30),
 		SMTPHost:            os.Getenv("SMTP_HOST"),
 		SMTPPort:            smtpPort,
 		SMTPUser:            os.Getenv("SMTP_USER"),
@@ -59,6 +63,8 @@ func LoadConfig() Config {
 		SMTPFrom:            envOrDefault("SMTP_FROM", "noreply@cbtlms.local"),
 		SMTPStartTLS:        smtpStartTLS,
 		BootstrapToken:      os.Getenv("BOOTSTRAP_TOKEN"),
+		GeminiAPIKey:        os.Getenv("GEMINI_API_KEY"),
+		GeminiModel:         envOrDefault("GEMINI_MODEL", "gemini-2.5-flash"),
 	}
 }
 

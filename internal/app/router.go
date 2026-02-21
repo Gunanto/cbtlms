@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cbtlms/internal/app/observability"
+	"cbtlms/internal/assistant"
 	"cbtlms/internal/auth"
 	"cbtlms/internal/exam"
 	"cbtlms/internal/masterdata"
@@ -28,6 +29,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	obs := observability.NewCollector(db)
 	r.Use(obs.Middleware)
 	authRateLimiter := NewIPRateLimiter(cfg.AuthRateLimitPerMin, time.Minute)
+	aiRateLimiter := NewIPRateLimiter(cfg.AIRateLimitPerMin, time.Minute)
 
 	tmpl := template.Must(template.ParseGlob("web/templates/layout/*.html"))
 	template.Must(tmpl.ParseGlob("web/templates/pages/*.html"))
@@ -45,6 +47,11 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 		Mailer:         mailer,
 	})
 	authHandler := auth.NewHandler(authSvc)
+	assistantSvc := assistant.NewService(assistant.ServiceConfig{
+		GeminiAPIKey: cfg.GeminiAPIKey,
+		GeminiModel:  cfg.GeminiModel,
+	})
+	assistantHandler := assistant.NewHandler(assistantSvc)
 
 	examSvc := exam.NewService(db, cfg.DefaultExamMinutes)
 	examHandler := exam.NewHandler(examSvc)
@@ -80,7 +87,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 	}
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		renderPage(w, "home_content", "CBT LMS", map[string]any{})
+		renderPage(w, "home_content", "g-cbt - Sistem Ujian Terintegrasi", map[string]any{})
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		renderPage(w, "login_content", "Login CBT LMS", map[string]any{})
@@ -122,6 +129,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 		api.With(RateLimitMiddleware(authRateLimiter)).Post("/auth/otp/request", authHandler.RequestOTP)
 		api.With(RateLimitMiddleware(authRateLimiter)).Post("/auth/otp/verify", authHandler.VerifyOTP)
 		api.With(RateLimitMiddleware(authRateLimiter)).Post("/registrations", authHandler.CreateRegistration)
+		api.With(RateLimitMiddleware(aiRateLimiter)).Post("/assistant", assistantHandler.Reply)
 
 		api.Group(func(secure chi.Router) {
 			secure.Use(authHandler.RequireAuth)
@@ -156,6 +164,8 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Put("/questions/{id}/versions/{version}", questionHandler.UpdateQuestionVersion)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Delete("/questions/{id}/versions/{version}", questionHandler.DeleteQuestionVersion)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Post("/questions/{id}/versions/{version}/finalize", questionHandler.FinalizeQuestionVersion)
+			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Post("/questions/{id}/versions/{version}/reopen", questionHandler.RequestReopenFinal)
+			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Post("/questions/{id}/versions/{version}/reopen/approve", questionHandler.ApproveReopenFinal)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Get("/questions/{id}/versions", questionHandler.ListQuestionVersions)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Post("/exams/{id}/parallels", questionHandler.CreateQuestionParallel)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Get("/exams/{id}/parallels", questionHandler.ListQuestionParallels)
@@ -174,6 +184,7 @@ func NewRouter(cfg Config, db *sql.DB) http.Handler {
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Post("/admin/exams/{id}/questions", examHandler.UpsertExamQuestion)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Put("/admin/exams/{id}/questions/{questionID}", examHandler.UpsertExamQuestion)
 			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Delete("/admin/exams/{id}/questions/{questionID}", examHandler.DeleteExamQuestion)
+			secure.With(authHandler.RequireRoles("admin", "proktor", "guru")).Put("/admin/exams/{id}/question-incidents", examHandler.UpsertExamQuestionIncident)
 
 			secure.Group(func(admin chi.Router) {
 				admin.Use(authHandler.RequireRoles("admin", "proktor"))
