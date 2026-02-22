@@ -1698,6 +1698,24 @@
       });
     }
 
+    function schoolCodeByID(schoolID) {
+      const sid = Number(schoolID || 0);
+      if (sid <= 0) return "";
+      const found = schoolsCache.find(function (it) {
+        return Number((it && it.id) || 0) === sid;
+      });
+      if (!found) return "";
+      return String((found && found.code) || "").trim();
+    }
+
+    function syncSchoolCodeDisplay(formEl) {
+      if (!formEl || !formEl.elements) return;
+      const schoolEl = formEl.elements.namedItem("school_id");
+      const codeEl = formEl.elements.namedItem("school_code_display");
+      if (!schoolEl || !codeEl) return;
+      codeEl.value = schoolCodeByID(schoolEl.value);
+    }
+
     function fillClassSelect(selectEl, classes, selectedID) {
       if (!selectEl) return;
       const selected = Number(selectedID || 0);
@@ -1737,6 +1755,10 @@
         ? participantNoEl.closest("label")
         : null;
       const nisnLabel = nisnEl ? nisnEl.closest("label") : null;
+      const schoolCodeEl = formEl.elements.namedItem("school_code_display");
+      const schoolCodeLabel = schoolCodeEl
+        ? schoolCodeEl.closest("label")
+        : null;
       if (schoolLabel) {
         schoolLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
       }
@@ -1748,6 +1770,9 @@
       }
       if (nisnLabel) {
         nisnLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
+      }
+      if (schoolCodeLabel) {
+        schoolCodeLabel.dataset.requiredRole = mustHaveClass ? "siswa" : "";
       }
     }
 
@@ -2209,6 +2234,7 @@
           userCreateForm.reset();
           applyUserFormRoleRequirements(userCreateForm);
           fillSchoolSelect(userCreateForm.elements.namedItem("school_id"));
+          syncSchoolCodeDisplay(userCreateForm);
           resetClassSelect(
             userCreateForm.elements.namedItem("class_id"),
             "Pilih Sekolah Dulu",
@@ -2374,6 +2400,7 @@
               userUpdateForm.elements.namedItem("school_id"),
               userItem.school_id,
             );
+            syncSchoolCodeDisplay(userUpdateForm);
             const schoolID = Number(userItem.school_id || 0);
             const classID = Number(userItem.class_id || 0);
             const classSelect = userUpdateForm.elements.namedItem("class_id");
@@ -2432,6 +2459,7 @@
       }
       if (createSchoolSelect && createClassSelect) {
         createSchoolSelect.addEventListener("change", function () {
+          syncSchoolCodeDisplay(userCreateForm);
           const sid = Number(createSchoolSelect.value || 0);
           if (sid <= 0) {
             resetClassSelect(createClassSelect, "Pilih Sekolah Dulu");
@@ -2464,12 +2492,19 @@
             .toLowerCase();
           const participantNo = String(fd.get("participant_no") || "").trim();
           const nisn = String(fd.get("nisn") || "").trim();
+          const schoolCode = schoolCodeByID(schoolID);
           if (isStudentRole(role) && (schoolID === null || classID === null)) {
             setMsg("Untuk role siswa, sekolah dan kelas wajib dipilih.");
             return;
           }
           if (isStudentRole(role) && (!participantNo || !nisn)) {
             setMsg("Untuk role siswa, nomor peserta dan NISN wajib diisi.");
+            return;
+          }
+          if (isStudentRole(role) && !schoolCode) {
+            setMsg(
+              "NPSN sekolah belum terisi. Lengkapi NPSN di menu Data Master > Sekolah.",
+            );
             return;
           }
           if (schoolID !== null && classID === null) {
@@ -2517,6 +2552,7 @@
       }
       if (updateSchoolSelect && updateClassSelect) {
         updateSchoolSelect.addEventListener("change", function () {
+          syncSchoolCodeDisplay(userUpdateForm);
           const sid = Number(updateSchoolSelect.value || 0);
           if (sid <= 0) {
             resetClassSelect(updateClassSelect, "Pilih Sekolah Dulu");
@@ -2550,12 +2586,19 @@
             .toLowerCase();
           const participantNo = String(fd.get("participant_no") || "").trim();
           const nisn = String(fd.get("nisn") || "").trim();
+          const schoolCode = schoolCodeByID(schoolID);
           if (isStudentRole(role) && (schoolID === null || classID === null)) {
             setMsg("Untuk role siswa, sekolah dan kelas wajib dipilih.");
             return;
           }
           if (isStudentRole(role) && (!participantNo || !nisn)) {
             setMsg("Untuk role siswa, nomor peserta dan NISN wajib diisi.");
+            return;
+          }
+          if (isStudentRole(role) && !schoolCode) {
+            setMsg(
+              "NPSN sekolah belum terisi. Lengkapi NPSN di menu Data Master > Sekolah.",
+            );
             return;
           }
           if (schoolID !== null && classID === null) {
